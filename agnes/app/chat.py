@@ -462,11 +462,21 @@ def _material_count_response(message: str) -> Dict:
 
     suppliers = best["suppliers"]
     sup_lines = "\n".join(
-        f"- **{s['name']}** — supplies {s['product_count']} variant"
+        f"- **{s['name']}** — {s.get('stock_quantity', 0):,} units "
+        f"across {s['product_count']} variant"
         f"{'s' if s['product_count'] != 1 else ''}"
         for s in suppliers[:10]
     ) or "_(no suppliers linked)_"
     more = f"\n…and {len(suppliers) - 10} more suppliers" if len(suppliers) > 10 else ""
+    total_stock = best.get("total_stock", 0)
+    out_ct = best.get("out_of_stock_variants", 0)
+    low_ct = best.get("low_stock_variants", 0)
+    deficit_note = ""
+    if out_ct or low_ct:
+        deficit_note = (
+            f"\n\n⚠️ **{out_ct}** variant{'s' if out_ct != 1 else ''} out of stock, "
+            f"**{low_ct}** low stock — substitutes may be needed."
+        )
 
     # Show canonical groupings so the user can see e.g. Zinc vs Zinc Oxide —
     # these are natural substitution families within the match.
@@ -485,19 +495,21 @@ def _material_count_response(message: str) -> Dict:
     if best_supplier:
         recommend = (
             f"\n\n💡 **Most efficient single source:** **{best_supplier['name']}** "
-            f"— covers {best_supplier['product_count']} of {best['count']} "
+            f"— {best_supplier.get('stock_quantity', 0):,} units across "
+            f"{best_supplier['product_count']} of {best['count']} "
             f"variants in one relationship."
         )
 
     return {
         "type": "text",
         "message": (
-            f"📦 We have **{best['count']}** raw-material "
-            f"variant{'s' if best['count'] != 1 else ''} matching "
-            f"**{keyword}**, used across **{len(best['companies'])}** "
+            f"📦 We have **{total_stock:,} units** of "
+            f"**{keyword}** on hand across **{best['count']}** raw-material "
+            f"variant{'s' if best['count'] != 1 else ''}, used by "
+            f"**{len(best['companies'])}** "
             f"compan{'ies' if len(best['companies']) != 1 else 'y'}.\n\n"
             f"**Suppliers ({len(suppliers)}):**\n{sup_lines}{more}"
-            f"{group_block}{recommend}"
+            f"{deficit_note}{group_block}{recommend}"
         ),
     }
 
@@ -539,13 +551,18 @@ def _material_query_from_plan(message: str, plan: Dict) -> Dict:
     evidence = {
         "material_asked": material,
         "variant_count": res["count"],
+        "total_stock_units": res.get("total_stock", 0),
+        "out_of_stock_variants": res.get("out_of_stock_variants", 0),
+        "low_stock_variants": res.get("low_stock_variants", 0),
         "suppliers": [
-            {"name": s["name"], "variant_count": s["product_count"]}
+            {"name": s["name"], "variant_count": s["product_count"],
+             "stock_quantity": s.get("stock_quantity", 0)}
             for s in res["suppliers"]
         ],
         "companies": [c["name"] for c in res["companies"]],
         "sub_families": [
-            {"canonical_name": g["canonical_name"], "count": g["count"]}
+            {"canonical_name": g["canonical_name"], "count": g["count"],
+             "stock_quantity": g.get("stock_quantity", 0)}
             for g in res.get("groups", [])
         ],
         "substitute_families": [
@@ -593,14 +610,26 @@ def _material_evidence_fallback(material: str, res: Dict,
 
     suppliers = res["suppliers"]
     sup_lines = "\n".join(
-        f"- **{s['name']}** — supplies {s['product_count']} variant"
+        f"- **{s['name']}** — {s.get('stock_quantity', 0):,} units "
+        f"across {s['product_count']} variant"
         f"{'s' if s['product_count'] != 1 else ''}"
         for s in suppliers[:10]
     ) or "_(no suppliers linked)_"
 
     best = suppliers[0] if suppliers else None
     rec = (f"\n\n💡 **Most efficient single source:** **{best['name']}** — "
-           f"covers {best['product_count']} of {res['count']} variants.") if best else ""
+           f"{best.get('stock_quantity', 0):,} units across "
+           f"{best['product_count']} of {res['count']} variants.") if best else ""
+
+    total_stock = res.get("total_stock", 0)
+    out_ct = res.get("out_of_stock_variants", 0)
+    low_ct = res.get("low_stock_variants", 0)
+    deficit_note = ""
+    if out_ct or low_ct:
+        deficit_note = (
+            f"\n\n⚠️ **{out_ct}** variant{'s' if out_ct != 1 else ''} out of stock, "
+            f"**{low_ct}** low stock — substitutes may be needed."
+        )
 
     sub_block = ""
     if plan.get("wants_substitutes") and subs:
@@ -613,11 +642,13 @@ def _material_evidence_fallback(material: str, res: Dict,
     return {
         "type": "text",
         "message": (
-            f"📦 We have **{res['count']}** raw-material variants of "
-            f"**{material}**, used by **{len(res['companies'])}** "
+            f"📦 We have **{total_stock:,} units** of **{material}** "
+            f"on hand across **{res['count']}** raw-material variant"
+            f"{'s' if res['count'] != 1 else ''}, used by "
+            f"**{len(res['companies'])}** "
             f"compan{'ies' if len(res['companies']) != 1 else 'y'}.\n\n"
             f"**Suppliers ({len(suppliers)}):**\n{sup_lines}"
-            f"{rec}{sub_block}"
+            f"{deficit_note}{rec}{sub_block}"
         ),
     }
 
@@ -636,32 +667,51 @@ def _order_fulfillment_from_plan(message: str, plan: Dict) -> Dict:
     if not material or req is None:
         return _llm_chat_response(message, plan)
 
+    # If the planner didn't supply our on-hand amount, pull the real number
+    # from the DB so we don't treat the entire order as a deficit.
+    db_total = None
     if avail is None:
-        avail = 0
-        
+        try:
+            res = consolidation.search_by_material(material)
+            db_total = res.get("total_stock", 0)
+            avail = db_total
+        except Exception:
+            avail = 0
+
     try:
         req = float(req)
         avail = float(avail)
     except (ValueError, TypeError):
         return _llm_chat_response(message, plan)
-        
-    deficit = req - avail
+
+    if avail >= req:
+        used_from_stock = req
+        deficit = 0
+    else:
+        used_from_stock = avail
+        deficit = req - avail
+
     if deficit <= 0:
         return {
             "type": "text",
-            "message": f"We have enough **{material}** to fulfill the request of {req}."
+            "message": (
+                f"✅ We can fulfill the full request of **{req:g}** units of "
+                f"**{material}** from on-hand stock "
+                f"(**{avail:g}** units available)."
+            ),
         }
 
     # Use quality-enriched substitutes so higher-quality options rank first
     subs = consolidation.find_substitutes_with_quality(material, limit=5)
-    
+
     evidence = {
         "action": "order_fulfillment",
         "material": material,
         "requested": req,
         "available": avail,
+        "used_from_existing_stock": used_from_stock,
         "deficit": deficit,
-        "substitute_candidates": subs
+        "substitute_candidates": subs,
     }
 
     if LLM_ENABLED:
@@ -678,20 +728,29 @@ def _order_fulfillment_from_plan(message: str, plan: Dict) -> Dict:
             quality_info.append(qi)
         quality_block = "\n".join(quality_info)
 
-        prompt = (f"The client requested {req} of {material}, but we only have {avail}. "
-                  f"We need {deficit} more. Suggest a reliable substitute to fulfill the "
-                  f"remaining {deficit}. "
-                  f"Here are the viable database substitutes ranked by quality (highest purity first):\n{quality_block}\n\n"
+        prompt = (f"The client requested {req:g} units of {material}. "
+                  f"We have {avail:g} units of {material} on hand — use ALL of that "
+                  f"existing stock first ({used_from_stock:g} units). "
+                  f"Only the remaining {deficit:g}-unit shortfall needs to be covered "
+                  f"by a substitute. Do NOT propose substituting the full order — "
+                  f"we are compensating the deficit only.\n\n"
+                  f"Here are the viable database substitutes ranked by quality "
+                  f"(highest purity first):\n{quality_block}\n\n"
                   "Pick the most functionally equivalent substitute (e.g. matching 'ascorbic acid' with 'Vitamin C' and avoiding unrelated items). "
                   "Prioritize substitutes with higher purity percentages and Pharma Grade when available. "
-                  "Explain how it can be used to cover the deficit and mention its quality metrics. "
+                  "In your reply, clearly state: (1) how many units come from existing stock, "
+                  "(2) how many units come from the substitute, and (3) why this substitute fits. "
                   "Respond in clear, helpful natural language. DO NOT hallucinate specs.")
         text = chat_with_agnes(prompt, context=evidence)
         if text:
             return {"type": "text", "message": text, "data": evidence}
 
     if not subs:
-        return {"type": "text", "message": f"Client requested **{req}** of **{material}**, but only **{avail}** is available. No viable substitutes found for the remaining **{deficit}**."}
+        return {"type": "text", "message": (
+            f"Client requested **{req:g}** units of **{material}**. "
+            f"Using all **{used_from_stock:g}** on-hand units leaves a "
+            f"shortfall of **{deficit:g}**. No viable substitutes found."
+        )}
 
     sub_lines = "\n".join(
         f"- **{s['canonical_name']}** — Purity: {s.get('avg_purity', '—')}%, "
@@ -699,9 +758,13 @@ def _order_fulfillment_from_plan(message: str, plan: Dict) -> Dict:
         f"Lab Pass: {s.get('lab_pass_rate', '—')}%"
         for s in subs[:3]
     )
-    msg = (f"Client requested **{req}** of **{material}**, but only **{avail}** is available.\n\n"
-           f"To fulfill the remaining **{deficit}**, consider these viable substitutions (ranked by quality):\n{sub_lines}")
-    
+    msg = (
+        f"Client requested **{req:g}** units of **{material}**.\n\n"
+        f"- Fulfill **{used_from_stock:g}** from existing on-hand stock.\n"
+        f"- Cover the remaining **{deficit:g}**-unit shortfall with one of "
+        f"these quality-ranked substitutes:\n{sub_lines}"
+    )
+
     return {"type": "text", "message": msg, "data": evidence}
 
 

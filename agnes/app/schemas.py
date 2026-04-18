@@ -75,6 +75,12 @@ class ChatResponse(BaseModel):
     llm_enabled: Optional[bool] = Field(None, description="Whether LLM is active")
 
 
+class SubstituteSuggestion(BaseModel):
+    supplier_name: str
+    sku: str
+    stock_quantity: int
+
+
 class InventoryItem(BaseModel):
     sku: str
     type: str
@@ -90,6 +96,9 @@ class InventoryItem(BaseModel):
     certifications: Optional[str] = None
     quality_audit_score: Optional[int] = None
     sustainability_rating: Optional[str] = None
+    stock_quantity: Optional[int] = None
+    stock_status: Optional[str] = None  # ok | low | out | unknown
+    substitute: Optional[SubstituteSuggestion] = None
 
 
 class SupplierInventoryOut(BaseModel):

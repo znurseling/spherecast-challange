@@ -157,15 +157,40 @@ def search_by_material(keyword: str) -> Dict:
 
     match_ids = {m["id"] for m in matches}
 
+    # Pull stock levels for all matched (supplier, product) pairs so we can
+    # answer "how much X do we have" with real numbers.
+    stock_by_pair: Dict[tuple, int] = {}
+    if match_ids:
+        try:
+            placeholders = ",".join("?" for _ in match_ids)
+            with connection() as c:
+                for row in c.execute(
+                    f"SELECT SupplierId, ProductId, InventoryLevel "
+                    f"FROM SupplierInventoryCost "
+                    f"WHERE ProductId IN ({placeholders})",
+                    tuple(match_ids),
+                ):
+                    stock_by_pair[(row["SupplierId"], row["ProductId"])] = (
+                        row["InventoryLevel"] or 0
+                    )
+        except Exception:
+            stock_by_pair = {}
+
     supplier_names = {}
     supplier_to_products = defaultdict(list)
+    supplier_to_stock = defaultdict(int)
+    product_to_stock = defaultdict(int)
     for sp in d["sps"]:
         if sp[s["sp_product"]] in match_ids:
             sup = d["suppliers"].get(sp[s["sp_supplier"]])
             if sup:
                 sid = sup[s["su_id"]]
+                pid = sp[s["sp_product"]]
                 supplier_names[sid] = sup[s["su_name"]]
-                supplier_to_products[sid].append(sp[s["sp_product"]])
+                supplier_to_products[sid].append(pid)
+                qty = stock_by_pair.get((sid, pid), 0)
+                supplier_to_stock[sid] += qty
+                product_to_stock[pid] += qty
 
     bom_company = {}
     for bom in d["boms"]:
@@ -184,19 +209,31 @@ def search_by_material(keyword: str) -> Dict:
                  for cid in company_ids if cid in d["companies"]]
 
     suppliers = [{"id": sid, "name": name,
-                  "product_count": len(set(supplier_to_products[sid]))}
+                  "product_count": len(set(supplier_to_products[sid])),
+                  "stock_quantity": supplier_to_stock.get(sid, 0)}
                  for sid, name in supplier_names.items()]
-    suppliers.sort(key=lambda r: r["product_count"], reverse=True)
+    suppliers.sort(key=lambda r: r["stock_quantity"], reverse=True)
 
     # Substitution families: group products by canonical name so callers
     # can see e.g. "Zinc (5)" vs "Zinc Oxide (16)" as interchangeable sets.
     groups: Dict[str, List[Dict]] = defaultdict(list)
     for m in matches:
-        groups[m["canonical"]].append({"id": m["id"], "sku": m["sku"]})
+        groups[m["canonical"]].append(
+            {"id": m["id"], "sku": m["sku"],
+             "stock_quantity": product_to_stock.get(m["id"], 0)}
+        )
     group_list = sorted(
-        [{"canonical_name": k, "count": len(v), "products": v}
+        [{"canonical_name": k, "count": len(v), "products": v,
+          "stock_quantity": sum(p["stock_quantity"] for p in v)}
          for k, v in groups.items()],
-        key=lambda g: g["count"], reverse=True,
+        key=lambda g: g["stock_quantity"], reverse=True,
+    )
+
+    total_stock = sum(product_to_stock.values())
+    out_of_stock = sum(1 for pid in match_ids if product_to_stock.get(pid, 0) <= 0)
+    low_stock = sum(
+        1 for pid in match_ids
+        if 0 < product_to_stock.get(pid, 0) <= 200
     )
 
     return {
@@ -206,6 +243,9 @@ def search_by_material(keyword: str) -> Dict:
         "suppliers": suppliers,
         "companies": companies,
         "groups": group_list,
+        "total_stock": total_stock,
+        "out_of_stock_variants": out_of_stock,
+        "low_stock_variants": low_stock,
     }
 
 

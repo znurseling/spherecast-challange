@@ -307,7 +307,8 @@ def chat_with_agnes(message: str, context: Optional[Dict] = None, history: Optio
         "7. DECISIVENESS: When comparing suppliers or options, you MUST always make a definitive choice. If multiple suppliers provide the same material, you MUST pick one specific supplier firm (e.g., 'Jost Chemical') and explain why they are superior based on data like purity, price, or audit scores. Never just recommend a material; always recommend a specific supplier-material pairing.\n"
         "8. PROACTIVE ACTION: After providing any analysis or recommendation, ALWAYS ask the user if they would like you to contact the supplier to take action and 'get the job done'.\n"
         "9. If the user asks you to send an email or contact someone, you have the capability to do so. You should confirm the details (recipient, subject, body) and then the system will handle the 'send_email' intent.\n"
-        "10. If you cannot answer based on context, simply state what is missing without suggesting technical queries.\n\n"
+        "10. If you cannot answer based on context, simply state what is missing without suggesting technical queries.\n"
+        "11. STOCK QUANTITIES: If the context contains `total_stock_units` or suppliers with `stock_quantity`, those are authoritative on-hand inventory numbers in units. Use them directly when the user asks 'how much / how many X do we have'. Never say stock is unknown if these fields are present. Break the answer down by supplier when useful, and flag `out_of_stock_variants` or `low_stock_variants` when > 0.\n\n"
         f"Database context:\n{json.dumps(ctx, indent=2)[:4000]}\n\n"
         f"User message: {message}\n"
     )

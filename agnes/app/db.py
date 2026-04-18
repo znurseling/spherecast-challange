@@ -111,11 +111,14 @@ def schema() -> Dict[str, str]:
 def raw_type_matches(v: str) -> bool:
     return str(v).lower().replace("_", "-") in ("raw-material", "rawmaterial")
 
+LOW_STOCK_THRESHOLD = 200  # items at/below this are flagged as deficit
+
+
 def get_supplier_inventory() -> List[Dict]:
     s = schema()
-    # Fetch all products with quality metrics via LEFT JOINs
+    # Fetch all products with quality + stock metrics via LEFT JOINs
     q = f"""
-        SELECT 
+        SELECT
             su.{s["su_name"]} AS supplier_name,
             su.{s["su_id"]} AS supplier_id,
             p.{s["p_sku"]} AS original_sku,
@@ -127,7 +130,8 @@ def get_supplier_inventory() -> List[Dict]:
             pq.Certifications,
             pq.LabTestStatus,
             spr.QualityAuditScore,
-            spr.SustainabilityRating
+            spr.SustainabilityRating,
+            sic.InventoryLevel AS stock_quantity
         FROM Supplier su
         JOIN Supplier_Product sp ON su.{s["su_id"]} = sp.{s["sp_supplier"]}
         JOIN Product p ON p.{s["p_id"]} = sp.{s["sp_product"]}
@@ -140,6 +144,8 @@ def get_supplier_inventory() -> List[Dict]:
             ON pq.SupplierId = su.{s["su_id"]} AND pq.ProductId = p.{s["p_id"]}
         LEFT JOIN SupplierPerformance spr
             ON spr.SupplierId = su.{s["su_id"]}
+        LEFT JOIN SupplierInventoryCost sic
+            ON sic.SupplierId = su.{s["su_id"]} AND sic.ProductId = p.{s["p_id"]}
         ORDER BY su.{s["su_name"]}, p.{s["p_sku"]}
     """
     with connection() as c:
@@ -203,6 +209,16 @@ def get_supplier_inventory() -> List[Dict]:
                 max_p = avg_p * 1.3
             is_estimate = True
             
+        stock_qty = r["stock_quantity"]
+        if stock_qty is None:
+            stock_status = "unknown"
+        elif stock_qty <= 0:
+            stock_status = "out"
+        elif stock_qty <= LOW_STOCK_THRESHOLD:
+            stock_status = "low"
+        else:
+            stock_status = "ok"
+
         inventory_map[sup]["materials"].append({
             "sku": sku,
             "type": r["type"],
@@ -219,10 +235,50 @@ def get_supplier_inventory() -> List[Dict]:
             "certifications": r["Certifications"],
             "quality_audit_score": r["QualityAuditScore"],
             "sustainability_rating": r["SustainabilityRating"],
+            "stock_quantity": stock_qty,
+            "stock_status": stock_status,
+            # Keys used to look up a substitute supplier for deficit items
+            "_canonical_key": clean_name.lower(),
+            "_supplier_name": sup,
         })
-        
+
+    # Build a canonical -> list of (supplier, stock, sku) index to pick
+    # substitute suppliers for deficit items.
+    canonical_index = {}
+    for sup_name, bucket in inventory_map.items():
+        for m in bucket["materials"]:
+            key = m["_canonical_key"]
+            if not key:
+                continue
+            canonical_index.setdefault(key, []).append({
+                "supplier_name": sup_name,
+                "sku": m["sku"],
+                "stock_quantity": m["stock_quantity"] or 0,
+            })
+
+    # Attach a substitute suggestion on deficit rows: pick the supplier
+    # offering the same canonical material with the highest available stock.
+    for bucket in inventory_map.values():
+        for m in bucket["materials"]:
+            if m["stock_status"] in ("low", "out"):
+                alternates = canonical_index.get(m["_canonical_key"], [])
+                best = None
+                for alt in alternates:
+                    if alt["supplier_name"] == m["_supplier_name"]:
+                        continue
+                    if alt["stock_quantity"] <= LOW_STOCK_THRESHOLD:
+                        continue
+                    if best is None or alt["stock_quantity"] > best["stock_quantity"]:
+                        best = alt
+                m["substitute"] = best
+            else:
+                m["substitute"] = None
+            # strip private helpers
+            m.pop("_canonical_key", None)
+            m.pop("_supplier_name", None)
+
     # Sort materials for each supplier by the extracted hex_id
     for sup in inventory_map:
         inventory_map[sup]["materials"].sort(key=lambda x: x["hex_id"])
-        
+
     return list(inventory_map.values())

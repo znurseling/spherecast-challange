@@ -64,7 +64,7 @@ async function loadInventory() {
           </summary>
           <div style="padding: 0 16px 16px 16px; overflow-x: auto;">
           <table class="rich-table" style="width:100%;text-align:left;margin-top:0;">
-            <thead><tr><th>Canonical Name</th><th>Type</th><th>Purity</th><th>Grade</th><th>Lab Status</th><th>Market Price (Avg)</th></tr></thead>
+            <thead><tr><th>Canonical Name</th><th>Type</th><th>Purity</th><th>Grade</th><th>Lab Status</th><th>Stock</th><th>Market Price (Avg)</th></tr></thead>
             <tbody>
       `;
       for (const mat of sup.materials) {
@@ -74,12 +74,33 @@ async function loadInventory() {
         const gradeText = mat.grade === "Pharma Grade" ? "var(--accent)" : "#f0ad4e";
         const labColor = mat.lab_status === "Passed" ? "rgba(0,200,100,0.15)" : "rgba(255,80,80,0.15)";
         const labText = mat.lab_status === "Passed" ? "var(--green)" : "var(--red)";
+
+        // Stock badge
+        let stockBg, stockFg, stockLabel;
+        if (mat.stock_status === "out") {
+          stockBg = "rgba(255,80,80,0.18)"; stockFg = "var(--red)"; stockLabel = "Out of stock";
+        } else if (mat.stock_status === "low") {
+          stockBg = "rgba(240,173,78,0.18)"; stockFg = "#f0ad4e"; stockLabel = `Low · ${mat.stock_quantity}`;
+        } else if (mat.stock_status === "ok") {
+          stockBg = "rgba(0,200,100,0.15)"; stockFg = "var(--green)"; stockLabel = `${mat.stock_quantity.toLocaleString()} units`;
+        } else {
+          stockBg = "rgba(255,255,255,0.05)"; stockFg = "var(--text-muted)"; stockLabel = "—";
+        }
+
+        let stockCell = `<span style="background:${stockBg}; color:${stockFg}; padding:3px 6px; border-radius:4px; font-size:11px; font-weight:600;">${stockLabel}</span>`;
+        if (mat.substitute) {
+          stockCell += `<div style="margin-top:4px; font-size:11px; color:var(--text-secondary);">↪ sub: <b style="color:var(--accent);">${mat.substitute.supplier_name}</b> <span style="color:var(--text-muted);">(${mat.substitute.stock_quantity.toLocaleString()})</span></div>`;
+        } else if (mat.stock_status === "out" || mat.stock_status === "low") {
+          stockCell += `<div style="margin-top:4px; font-size:11px; color:var(--red);">No alternate supplier</div>`;
+        }
+
         html += `<tr>
           <td style="font-weight: 500;">${mat.canonical_name || "—"}</td>
           <td><span style="background: rgba(0, 184, 255, 0.1); color: var(--accent); padding: 3px 6px; border-radius: 4px; font-size: 11px;">${mat.type}</span></td>
           <td><b style="color:${purityColor}">${purity}</b></td>
           <td><span style="background:${gradeColor}; color:${gradeText}; padding:3px 6px; border-radius:4px; font-size:11px;">${mat.grade || "—"}</span></td>
           <td><span style="background:${labColor}; color:${labText}; padding:3px 6px; border-radius:4px; font-size:11px; font-weight:600;">${mat.lab_status || "—"}</span></td>
+          <td>${stockCell}</td>
           <td>
             <b style="color:var(--green)">$${mat.market_price_avg.toFixed(2)}</b> /kg
           </td>
