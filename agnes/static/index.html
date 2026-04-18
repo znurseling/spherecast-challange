@@ -28,6 +28,10 @@
         <a href="#" id="btnViewInventory" class="btn-inventory">
           View Inventory
         </a>
+        <input type="file" id="sqlUpload" accept=".sql,.sqlite,.db" style="display:none;" />
+        <button id="btnUpload" class="btn-inventory" style="width: 100%; cursor: pointer; border: 1px dashed var(--accent);">
+          📎 Upload SQL Brain
+        </button>
       </div>
       <div class="sidebar-footer">
         <div class="status-badge">
@@ -57,13 +61,7 @@
           <div class="audio-bar"></div><div class="audio-bar"></div>
           <div class="audio-bar"></div>
         </div>
-        <div class="quick-actions">
-          <button class="quick-btn" data-msg="Show me the dashboard">📊 Dashboard</button>
-          <button class="quick-btn" data-msg="Top consolidation candidates">🔍 Candidates</button>
-          <button class="quick-btn" data-msg="Recommend sourcing for the most fragmented material">💡 Recommend</button>
-          <button class="quick-btn" data-msg="Tell me about product 200">📦 Product 200</button>
-          <button class="quick-btn" data-msg="Can 201 replace 200?">🔄 Substitute</button>
-        </div>
+
         <div class="input-row">
           <button class="btn-icon btn-mic" id="btnMic" title="Voice input">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line></svg>

@@ -22,13 +22,19 @@ def _sku_tokens(sku: str) -> List[str]:
 
 def load_all() -> Dict:
     s = schema()
-    with connection() as c:
-        products = {r[s["p_id"]]: dict(r) for r in c.execute("SELECT * FROM Product")}
-        companies = {r[s["co_id"]]: dict(r) for r in c.execute("SELECT * FROM Company")}
-        suppliers = {r[s["su_id"]]: dict(r) for r in c.execute("SELECT * FROM Supplier")}
-        boms = [dict(r) for r in c.execute("SELECT * FROM BOM")]
-        bcs = [dict(r) for r in c.execute("SELECT * FROM BOM_Component")]
-        sps = [dict(r) for r in c.execute("SELECT * FROM Supplier_Product")]
+    try:
+        with connection() as c:
+            products = {r[s["p_id"]]: dict(r) for r in c.execute("SELECT * FROM Product")}
+            companies = {r[s["co_id"]]: dict(r) for r in c.execute("SELECT * FROM Company")}
+            suppliers = {r[s["su_id"]]: dict(r) for r in c.execute("SELECT * FROM Supplier")}
+            boms = [dict(r) for r in c.execute("SELECT * FROM BOM")]
+            bcs = [dict(r) for r in c.execute("SELECT * FROM BOM_Component")]
+            sps = [dict(r) for r in c.execute("SELECT * FROM Supplier_Product")]
+    except Exception:
+        # Fallback for missing tables
+        products, companies, suppliers = {}, {}, {}
+        boms, bcs, sps = [], [], []
+
     return {
         "s": s, "products": products, "companies": companies,
         "suppliers": suppliers, "boms": boms, "bcs": bcs, "sps": sps,

@@ -481,7 +481,12 @@ def _material_count_response(message: str) -> Dict:
 
 def _unknown_response(message: str) -> Dict:
     if LLM_ENABLED:
-        text = chat_with_agnes(message, context=_chat_context(message))
+        # Inject uploaded SQL if present in context
+        sql_dump = context.get("uploaded_sql")
+        if sql_dump:
+            # Append the raw SQL dump to the context for the LLM
+            context["uploaded_sql"] = sql_dump
+        text = chat_with_agnes(message, context=context)
         if text:
             return {"type": "text", "message": text}
 

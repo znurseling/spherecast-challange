@@ -275,5 +275,6 @@ def chat_with_agnes(message: str, context: Optional[Dict] = None) -> str:
     try:
         resp = _model.generate_content(prompt)
         return resp.text.strip()
-    except Exception:
+    except Exception as e:
+        print(f"LLM Error: {e}")
         return ""
