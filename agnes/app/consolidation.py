@@ -5,9 +5,19 @@ For every raw material, count how many companies consume it and how many
 suppliers offer it. This is the baseline signal — no AI, no hallucination
 risk — that everything else refines.
 """
+import re
 from collections import defaultdict
 from typing import Dict, List
 from .db import connection, schema, raw_type_matches
+
+
+_SKU_SPLIT_RE = re.compile(r"[\s\-_]+")
+
+
+def _sku_tokens(sku: str) -> List[str]:
+    """Split a SKU into its word tokens so we can match on word boundaries
+    (so "hey" never matches "whey", "zinc" never matches "benzinc")."""
+    return [t.lower() for t in _SKU_SPLIT_RE.split(sku or "") if t]
 
 
 def load_all() -> Dict:
@@ -112,21 +122,32 @@ def product_detail(product_id: int) -> Dict:
 
 
 def search_by_material(keyword: str) -> Dict:
-    """Find raw-material products whose SKU contains `keyword`.
-    Returns counts plus the suppliers offering them."""
+    """Find raw-material products whose SKU tokens match ALL keyword tokens.
+    Word-boundary matching — 'hey' won't match 'whey'."""
+    from .llm import _mock_canonical
     d = load_all()
     s, prods = d["s"], d["products"]
     kw = keyword.lower().strip()
     if not kw:
-        return {"keyword": keyword, "count": 0, "products": [], "suppliers": []}
+        return {"keyword": keyword, "count": 0, "products": [],
+                "suppliers": [], "companies": [], "groups": []}
+
+    terms = _sku_tokens(kw)
+    if not terms:
+        return {"keyword": keyword, "count": 0, "products": [],
+                "suppliers": [], "companies": [], "groups": []}
 
     matches = []
     for pid, p in prods.items():
         sku = (p.get(s["p_sku"]) or "")
         if not raw_type_matches(p.get(s["p_type"])):
             continue
-        if kw in sku.lower():
-            matches.append({"id": pid, "sku": sku})
+        tokens = _sku_tokens(sku)
+        if all(term in tokens for term in terms):
+            matches.append({
+                "id": pid, "sku": sku,
+                "canonical": _mock_canonical(sku),
+            })
 
     match_ids = {m["id"] for m in matches}
 
@@ -161,13 +182,54 @@ def search_by_material(keyword: str) -> Dict:
                  for sid, name in supplier_names.items()]
     suppliers.sort(key=lambda r: r["product_count"], reverse=True)
 
+    # Substitution families: group products by canonical name so callers
+    # can see e.g. "Zinc (5)" vs "Zinc Oxide (16)" as interchangeable sets.
+    groups: Dict[str, List[Dict]] = defaultdict(list)
+    for m in matches:
+        groups[m["canonical"]].append({"id": m["id"], "sku": m["sku"]})
+    group_list = sorted(
+        [{"canonical_name": k, "count": len(v), "products": v}
+         for k, v in groups.items()],
+        key=lambda g: g["count"], reverse=True,
+    )
+
     return {
         "keyword": keyword,
         "count": len(matches),
         "products": matches,
         "suppliers": suppliers,
         "companies": companies,
+        "groups": group_list,
     }
+
+
+def find_substitutes(keyword: str, limit: int = 10) -> List[Dict]:
+    """Return raw-material canonical groups that share any token with the
+    keyword — e.g. 'vitamin' returns Vitamin C + Vitamin B12 + etc. as
+    potential substitute candidates for a client order."""
+    from .llm import _mock_canonical
+    d = load_all()
+    s, prods = d["s"], d["products"]
+    terms = set(_sku_tokens(keyword))
+    if not terms:
+        return []
+
+    groups: Dict[str, List[Dict]] = defaultdict(list)
+    for pid, p in prods.items():
+        if not raw_type_matches(p.get(s["p_type"])):
+            continue
+        sku = p.get(s["p_sku"]) or ""
+        canon = _mock_canonical(sku)
+        canon_tokens = set(_sku_tokens(canon))
+        # Share at least one non-trivial token with the search keyword
+        if terms & canon_tokens:
+            groups[canon].append({"id": pid, "sku": sku})
+
+    out = [{"canonical_name": c, "variant_count": len(p), "sample_skus":
+            [x["sku"] for x in p[:4]]}
+           for c, p in groups.items()]
+    out.sort(key=lambda g: g["variant_count"], reverse=True)
+    return out[:limit]
 
 
 def portfolio_summary() -> Dict:

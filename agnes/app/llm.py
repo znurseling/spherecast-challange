@@ -181,6 +181,80 @@ Do not invent certifications or specs you cannot ground in the provided data."""
             "reasoning": mock_reason, "evidence": evidence, "mode": mode,
         }
 
+def understand_message(message: str) -> Optional[Dict]:
+    """Ask the LLM to parse a user message into a structured action plan.
+    Returns None when the LLM is unavailable — callers fall back to regex.
+
+    Expected JSON shape:
+      {
+        "action": "material_query"|"dashboard"|"candidates"|
+                  "product_detail"|"substitute"|"recommend"|
+                  "greeting"|"help"|"chat",
+        "material": "<canonical ingredient name or null>",
+        "product_ids": [<int>, ...],
+        "wants_count": bool,          # "how much / how many"
+        "wants_suppliers": bool,      # "which supplier / where to buy"
+        "wants_companies": bool,      # "which company / who uses it"
+        "wants_substitutes": bool,    # "alternatives / substitutes / swap"
+        "wants_efficient": bool,      # "most efficient / best / cheapest"
+        "mode": "strict"|"creative"
+      }
+    """
+    if not _model:
+        return None
+
+    prompt = f"""You are the intent router for Agnes, an AI supply-chain assistant.
+Parse the user message into a JSON action plan. Pick the single best action.
+
+Actions:
+- "material_query": user asks about a specific raw material — how much we have,
+  who supplies it, who buys it, substitutes, most-efficient sourcing, etc.
+- "dashboard": user wants the portfolio overview.
+- "candidates": user wants consolidation candidates.
+- "product_detail": user references a product by numeric ID.
+- "substitute": user asks whether product X can replace product Y
+  (needs two product IDs).
+- "recommend": user wants a sourcing recommendation for a product/ID.
+- "greeting" / "help" / "chat": small talk or open-ended.
+
+For material_query, extract:
+  material          = the canonical ingredient name the user is asking about,
+                      lowercase, singular. Normalize spellings (e.g. "vitamin C"
+                      → "vitamin c", "VitC" → "vitamin c", "ascorbic-acid" →
+                      "ascorbic acid"). Null if no material mentioned.
+  wants_count       = true if they asked quantity / how many / how much / stock.
+  wants_suppliers   = true if they asked which supplier / where to buy / who offers.
+  wants_companies   = true if they asked which company consumes / buys / uses it.
+  wants_substitutes = true if they asked for alternatives / substitutes / swap /
+                      "can X replace Y" or implied efficiency via substitution.
+  wants_efficient   = true if they asked for "most efficient" / "best" /
+                      "single supplier" / cheapest / optimal sourcing.
+
+Also extract product_ids (array of integers mentioned) and mode (strict|creative,
+default strict).
+
+Respond with ONLY the JSON object — no prose, no code fences.
+
+User message: {message}
+"""
+
+    try:
+        resp = _model.generate_content(prompt)
+        text = resp.text.strip()
+        text = re.sub(r"^```(?:json)?|```$", "", text, flags=re.MULTILINE).strip()
+        data = json.loads(text)
+        data.setdefault("action", "chat")
+        data.setdefault("material", None)
+        data.setdefault("product_ids", [])
+        for flag in ("wants_count", "wants_suppliers", "wants_companies",
+                     "wants_substitutes", "wants_efficient"):
+            data.setdefault(flag, False)
+        data.setdefault("mode", "strict")
+        return data
+    except Exception:
+        return None
+
+
 def chat_with_agnes(message: str, context: Optional[Dict] = None) -> str:
     """Fallback conversational chat with optional DB-backed context."""
     if not _model:
