@@ -10,7 +10,7 @@ Run:  python3 supply.py
 import sqlite3
 from collections import defaultdict
 
-DB_PATH = "db.sqlite"
+DB_PATH = "agnes/db.sqlite"
 
 
 # ---------- helpers to find columns by fuzzy match ----------
