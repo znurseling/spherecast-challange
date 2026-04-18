@@ -55,7 +55,15 @@ body {
   overflow: hidden;
 }
 
-.main-panel { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.main-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  position: relative;
+  background: var(--bg-main);
+  overflow: hidden; /* Prevent body scroll */
+}
 
 /* ── Sidebar ────────────────────────────────── */
 .sidebar-header {
@@ -223,7 +231,12 @@ details[open] .chevron { transform: rotate(180deg); }
 
 /* ── Messages ───────────────────────────────── */
 .messages-container {
-  flex: 1; overflow-y: auto; padding: 24px;
+  flex: 1;
+  padding: 24px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
   scroll-behavior: smooth;
 }
 .messages-container::-webkit-scrollbar { width: 5px; }

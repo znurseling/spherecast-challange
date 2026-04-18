@@ -11,6 +11,7 @@ from . import consolidation, recommender
 from .normalizer import normalize
 from .llm import assess_substitution, chat_with_agnes, understand_message
 from .config import LLM_ENABLED
+from .db import connection
 
 
 # ── Intent detection ────────────────────────────────────────────────
@@ -102,17 +103,20 @@ def _chat_context(message: str) -> Dict[str, Any]:
     # 5. Market Prices
     material = _extract_keyword(message)
     if material:
-        q_prices = "SELECT price_per_kg, min_price, max_price, currency FROM market_prices WHERE material_name LIKE ?"
-        with connection() as c:
-            price_row = c.execute(q_prices, (f"%{material}%",)).fetchone()
-        
-        if price_row:
-            context["market_price"] = {
-                "avg_price_per_kg": price_row["price_per_kg"],
-                "min_price": price_row["min_price"],
-                "max_price": price_row["max_price"],
-                "currency": price_row["currency"]
-            }
+        try:
+            q_prices = "SELECT price_per_kg, min_price, max_price, currency FROM market_prices WHERE material_name LIKE ?"
+            with connection() as c:
+                price_row = c.execute(q_prices, (f"%{material}%",)).fetchone()
+            
+            if price_row:
+                context["market_price"] = {
+                    "avg_price_per_kg": price_row["price_per_kg"],
+                    "min_price": price_row["min_price"],
+                    "max_price": price_row["max_price"],
+                    "currency": price_row["currency"]
+                }
+        except Exception:
+            pass
 
     return context
 
@@ -647,7 +651,8 @@ def _order_fulfillment_from_plan(message: str, plan: Dict) -> Dict:
             "message": f"We have enough **{material}** to fulfill the request of {req}."
         }
 
-    subs = consolidation.find_substitutes(material, limit=5)
+    # Use quality-enriched substitutes so higher-quality options rank first
+    subs = consolidation.find_substitutes_with_quality(material, limit=5)
     
     evidence = {
         "action": "order_fulfillment",
@@ -659,12 +664,27 @@ def _order_fulfillment_from_plan(message: str, plan: Dict) -> Dict:
     }
 
     if LLM_ENABLED:
+        # Build quality context for the LLM
+        quality_info = []
+        for s in subs[:3]:
+            qi = f"  - {s['canonical_name']}: {s['variant_count']} variants"
+            if s.get('avg_purity'):
+                qi += f", avg purity {s['avg_purity']}%"
+            if s.get('dominant_grade'):
+                qi += f", {s['dominant_grade']}"
+            if s.get('lab_pass_rate'):
+                qi += f", {s['lab_pass_rate']}% lab pass rate"
+            quality_info.append(qi)
+        quality_block = "\n".join(quality_info)
+
         prompt = (f"The client requested {req} of {material}, but we only have {avail}. "
                   f"We need {deficit} more. Suggest a reliable substitute to fulfill the "
                   f"remaining {deficit}. "
-                  f"Here are the viable database substitutes: {str(subs[:3])}. "
-                  "Pick the most functionally equivalent substitute (e.g. matching 'ascorbic acid' with 'Vitamin C' and avoiding unrelated items) "
-                  "and explain how it can be used to cover the deficit. Respond in clear, helpful natural language. DO NOT hallucinate specs.")
+                  f"Here are the viable database substitutes ranked by quality (highest purity first):\n{quality_block}\n\n"
+                  "Pick the most functionally equivalent substitute (e.g. matching 'ascorbic acid' with 'Vitamin C' and avoiding unrelated items). "
+                  "Prioritize substitutes with higher purity percentages and Pharma Grade when available. "
+                  "Explain how it can be used to cover the deficit and mention its quality metrics. "
+                  "Respond in clear, helpful natural language. DO NOT hallucinate specs.")
         text = chat_with_agnes(prompt, context=evidence)
         if text:
             return {"type": "text", "message": text, "data": evidence}
@@ -672,9 +692,14 @@ def _order_fulfillment_from_plan(message: str, plan: Dict) -> Dict:
     if not subs:
         return {"type": "text", "message": f"Client requested **{req}** of **{material}**, but only **{avail}** is available. No viable substitutes found for the remaining **{deficit}**."}
 
-    sub_lines = "\n".join(f"- **{s['canonical_name']}**" for s in subs[:3])
+    sub_lines = "\n".join(
+        f"- **{s['canonical_name']}** — Purity: {s.get('avg_purity', '—')}%, "
+        f"Grade: {s.get('dominant_grade', '—')}, "
+        f"Lab Pass: {s.get('lab_pass_rate', '—')}%"
+        for s in subs[:3]
+    )
     msg = (f"Client requested **{req}** of **{material}**, but only **{avail}** is available.\n\n"
-           f"To fulfill the remaining **{deficit}**, consider these viable substitutions:\n{sub_lines}")
+           f"To fulfill the remaining **{deficit}**, consider these viable substitutions (ranked by quality):\n{sub_lines}")
     
     return {"type": "text", "message": msg, "data": evidence}
 

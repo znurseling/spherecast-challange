@@ -8,7 +8,6 @@ const $btnSend    = document.getElementById("btnSend");
 const $btnMic     = document.getElementById("btnMic");
 const $btnSpeaker = document.getElementById("btnSpeaker");
 const $audioViz   = document.getElementById("audioVisualizer");
-const $status     = document.getElementById("statusText");
 
 const $chatPanel        = document.getElementById("chatPanel");
 const $inventoryPanel   = document.getElementById("inventoryPanel");
@@ -35,9 +34,8 @@ async function loadDashboard() {
     const r = await fetch("/api/v1/dashboard", { headers: HEADERS });
     if (!r.ok) throw new Error(r.status);
     const d = await r.json();
-    $status.textContent = "Agnes Online";
   } catch {
-    $status.textContent = "Offline — start server";
+    console.error("Dashboard load failed");
   }
 }
 
@@ -63,16 +61,24 @@ async function loadInventory() {
               <svg class="chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
             </div>
           </summary>
-          <div style="padding: 0 16px 16px 16px;">
+          <div style="padding: 0 16px 16px 16px; overflow-x: auto;">
           <table class="rich-table" style="width:100%;text-align:left;margin-top:0;">
-            <thead><tr><th>Canonical Name</th><th>Type</th><th>Suppliers</th><th>Market Price (Avg)</th></tr></thead>
+            <thead><tr><th>Canonical Name</th><th>Type</th><th>Purity</th><th>Grade</th><th>Lab Status</th><th>Market Price (Avg)</th></tr></thead>
             <tbody>
       `;
       for (const mat of sup.materials) {
+        const purity = mat.purity_percentage != null ? mat.purity_percentage.toFixed(1) + "%" : "—";
+        const purityColor = mat.purity_percentage >= 98 ? "var(--green)" : mat.purity_percentage >= 94 ? "#f0ad4e" : "var(--red)";
+        const gradeColor = mat.grade === "Pharma Grade" ? "rgba(0,184,255,0.15)" : "rgba(255,180,50,0.15)";
+        const gradeText = mat.grade === "Pharma Grade" ? "var(--accent)" : "#f0ad4e";
+        const labColor = mat.lab_status === "Passed" ? "rgba(0,200,100,0.15)" : "rgba(255,80,80,0.15)";
+        const labText = mat.lab_status === "Passed" ? "var(--green)" : "var(--red)";
         html += `<tr>
           <td style="font-weight: 500;">${mat.canonical_name || "—"}</td>
           <td><span style="background: rgba(0, 184, 255, 0.1); color: var(--accent); padding: 3px 6px; border-radius: 4px; font-size: 11px;">${mat.type}</span></td>
-          <td>${mat.supplier_count || 1}</td>
+          <td><b style="color:${purityColor}">${purity}</b></td>
+          <td><span style="background:${gradeColor}; color:${gradeText}; padding:3px 6px; border-radius:4px; font-size:11px;">${mat.grade || "—"}</span></td>
+          <td><span style="background:${labColor}; color:${labText}; padding:3px 6px; border-radius:4px; font-size:11px; font-weight:600;">${mat.lab_status || "—"}</span></td>
           <td>
             <b style="color:var(--green)">$${mat.market_price_avg.toFixed(2)}</b> /kg
           </td>
@@ -98,38 +104,6 @@ function showInbox() {
   $inventoryPanel.style.display = "none";
   $chatPanel.style.display = "none";
   if ($inboxPanel) $inboxPanel.style.display = "flex";
-}
-
-/* ── Send message ─────────────────────────────── */
-async function sendMessage(text) {
-  if (!text.trim()) return;
-  
-  const currentHistory = [...chatHistory]; // Clone current state
-  addUserMessage(text);
-  chatHistory.push({ role: "user", content: text });
-  
-  $input.value = "";
-  const typingEl = showTyping();
-
-  try {
-    const r = await fetch("/api/v1/chat", {
-      method: "POST", headers: HEADERS,
-      body: JSON.stringify({ message: text, history: currentHistory }),
-    });
-    removeTyping(typingEl);
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    const data = await r.json();
-    addBotMessage(data);
-    
-    // Store Agnes' response in history for next turn
-    chatHistory.push({ role: "bot", content: data.message });
-    
-    if (ttsEnabled) speak(data.message);
-    if (data.intent === "dashboard") loadDashboard();
-  } catch (e) {
-    removeTyping(typingEl);
-    addBotMessage({ type: "text", message: `❌ Error: ${e.message}. Is the server running?` });
-  }
 }
 
 /* ── Message rendering ────────────────────────── */
@@ -271,9 +245,19 @@ function renderRecommendations(d) {
 
 function renderEvidence(evidence) {
   if (!evidence || !evidence.length) return "";
-  return `<div class="evidence-list">${evidence.map(e =>
-    `<div class="evidence-item"><span class="evidence-source">${e.source}</span><span class="evidence-detail">${e.detail}</span></div>`
-  ).join("")}</div>`;
+  return `<div class="evidence-list" style="margin-top: 12px; display: flex; flex-direction: column; gap: 8px;">
+    ${evidence.map(e => {
+      const urlRegex = /(https?:\/\/[^\s\)]+)/g;
+      let detailHTML = e.detail.replace(urlRegex, '<a href="$1" target="_blank" style="color: var(--accent); text-decoration: none; font-weight: 500; display: inline-flex; align-items: center; gap: 4px; background: rgba(0, 184, 255, 0.1); padding: 2px 6px; border-radius: 4px; margin-top: 6px;">Link ↗</a>');
+      let sourceIcon = e.source.includes('External') ? '🌍' : '🗄️';
+      return `<div class="evidence-item" style="background: rgba(255,255,255,0.02); padding: 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.05);">
+        <div style="font-weight: 600; font-size: 11px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px;">
+          <span style="margin-right:6px;">${sourceIcon}</span>${e.source}
+        </div>
+        <div class="evidence-detail" style="font-size: 13px; color: var(--text-primary); line-height: 1.4;">${detailHTML}</div>
+      </div>`;
+    }).join("")}
+  </div>`;
 }
 
 /* ── Markdown (minimal) ──────────────────────── */
@@ -363,14 +347,46 @@ if (window.speechSynthesis) {
   window.speechSynthesis.onvoiceschanged = () => window.speechSynthesis.getVoices();
 }
 
+const $welcomeSection = document.getElementById("welcomeSection");
+
+async function sendMessage(text) {
+  if (!text || text.trim() === "") return;
+  $input.value = "";
+  
+  // Hide welcome section on first message
+  if ($welcomeSection) $welcomeSection.style.display = "none";
+
+  addUserMessage(text);
+  const currentHistory = [...chatHistory];
+  chatHistory.push({ role: "user", content: text });
+
+  const typing = showTyping();
+  try {
+    const r = await fetch("/api/v1/chat", {
+      method: "POST",
+      headers: HEADERS,
+      body: JSON.stringify({ message: text, history: currentHistory })
+    });
+    const d = await r.json();
+    removeTyping(typing);
+    addBotMessage(d);
+    chatHistory.push({ role: "model", content: d.message });
+    if (ttsEnabled) speak(d.message);
+    if (d.intent === "dashboard") loadDashboard();
+  } catch (err) {
+    removeTyping(typing);
+    addBotMessage({ message: "Error: " + err.message });
+  }
+}
+
 /* ── Event listeners ──────────────────────────── */
 $btnSend.addEventListener("click", () => sendMessage($input.value));
 $input.addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage($input.value); } });
 $btnMic.addEventListener("click", toggleRecording);
 $btnSpeaker.addEventListener("click", toggleTTS);
 
-document.querySelectorAll(".quick-btn").forEach(btn => {
-  btn.addEventListener("click", () => sendMessage(btn.dataset.msg));
+document.querySelectorAll(".clickable-cap").forEach(card => {
+  card.addEventListener("click", () => sendMessage(card.dataset.msg));
 });
 
 if ($btnAskAgnes) $btnAskAgnes.addEventListener("click", (e) => { e.preventDefault(); showChat(); });

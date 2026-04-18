@@ -84,6 +84,12 @@ class InventoryItem(BaseModel):
     market_price_min: Optional[float] = None
     market_price_max: Optional[float] = None
     is_estimate: Optional[bool] = False
+    purity_percentage: Optional[float] = None
+    grade: Optional[str] = None
+    lab_status: Optional[str] = None
+    certifications: Optional[str] = None
+    quality_audit_score: Optional[int] = None
+    sustainability_rating: Optional[str] = None
 
 
 class SupplierInventoryOut(BaseModel):

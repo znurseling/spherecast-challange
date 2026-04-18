@@ -130,6 +130,23 @@ def assess_substitution(
          "detail": f"{len(shared_suppliers)} shared supplier(s)"},
     ]
 
+    from .enrichment import enrich_product_data
+    
+    # Try to enrich data with web search
+    a_external = enrich_product_data(a.get("product_id"), "Supplier", a_canon)
+    b_external = enrich_product_data(b.get("product_id"), "Supplier", b_canon)
+    
+    for ev in a_external:
+        evidence.append({
+            "source": f"External Web (Material A)",
+            "detail": f"{ev['ComplianceTags']} - {ev['FactSnippet']} (URL: {ev['SourceURL']})"
+        })
+    for ev in b_external:
+        evidence.append({
+            "source": f"External Web (Material B)",
+            "detail": f"{ev['ComplianceTags']} - {ev['FactSnippet']} (URL: {ev['SourceURL']})"
+        })
+
     if not _model:
         return {
             "verdict": mock_verdict, "confidence": mock_conf,
@@ -147,7 +164,7 @@ Material A: {json.dumps(a)[:800]}
 Material B: {json.dumps(b)[:800]}
 Context:    {json.dumps(ctx)[:400]}
 
-Preliminary DB evidence:
+Preliminary DB & External Evidence:
 {json.dumps(evidence, indent=2)}
 
 Respond with ONLY a JSON object:

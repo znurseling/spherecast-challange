@@ -22,7 +22,9 @@ from . import consolidation, recommender
 from .normalizer import normalize
 from .llm import assess_substitution
 from .chat import handle_chat
-from .db import schema
+from .db import schema, init_db
+
+init_db()
 
 
 # ---------- auth dependency ----------
