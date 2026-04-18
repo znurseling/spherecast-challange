@@ -238,6 +238,90 @@ def find_substitutes(keyword: str, limit: int = 10) -> List[Dict]:
     return out[:limit]
 
 
+def find_substitutes_with_quality(keyword: str, limit: int = 10) -> List[Dict]:
+    """Like find_substitutes but enriches each group with average quality
+    metrics from ProductQualitySpecs. Results are sorted by quality
+    (highest average purity first) so the best substitutes appear on top."""
+    from .llm import _mock_canonical
+    d = load_all()
+    s, prods = d["s"], d["products"]
+    terms = set(_sku_tokens(keyword))
+    if not terms:
+        return []
+
+    # Collect product IDs per canonical group
+    groups: Dict[str, List[Dict]] = defaultdict(list)
+    for pid, p in prods.items():
+        if not raw_type_matches(p.get(s["p_type"])):
+            continue
+        sku = p.get(s["p_sku"]) or ""
+        canon = _mock_canonical(sku)
+        canon_tokens = set(_sku_tokens(canon))
+        if terms & canon_tokens:
+            groups[canon].append({"id": pid, "sku": sku})
+
+    if not groups:
+        return []
+
+    # Fetch quality data for all matched product IDs
+    all_pids = {item["id"] for items in groups.values() for item in items}
+    quality_by_pid: Dict[int, Dict] = {}
+    try:
+        with connection() as c:
+            placeholders = ",".join("?" * len(all_pids))
+            rows = c.execute(
+                f"SELECT ProductId, PurityPercentage, Grade, LabTestStatus, Certifications "
+                f"FROM ProductQualitySpecs WHERE ProductId IN ({placeholders})",
+                list(all_pids)
+            ).fetchall()
+            for r in rows:
+                pid = r["ProductId"]
+                if pid not in quality_by_pid:
+                    quality_by_pid[pid] = []
+                quality_by_pid[pid].append({
+                    "purity": r["PurityPercentage"],
+                    "grade": r["Grade"],
+                    "lab_status": r["LabTestStatus"],
+                })
+    except Exception:
+        pass
+
+    out = []
+    for canon, products in groups.items():
+        # Aggregate quality across all supplier entries for products in this group
+        purities = []
+        grades = {"Pharma Grade": 0, "Food Grade": 0}
+        lab_passed = 0
+        lab_total = 0
+        for p in products:
+            entries = quality_by_pid.get(p["id"], [])
+            for e in entries:
+                if e["purity"] is not None:
+                    purities.append(e["purity"])
+                if e["grade"] in grades:
+                    grades[e["grade"]] += 1
+                lab_total += 1
+                if e["lab_status"] == "Passed":
+                    lab_passed += 1
+
+        avg_purity = round(sum(purities) / len(purities), 1) if purities else None
+        lab_pass_rate = round(lab_passed / lab_total * 100, 1) if lab_total else None
+        dominant_grade = max(grades, key=grades.get) if any(grades.values()) else None
+
+        out.append({
+            "canonical_name": canon,
+            "variant_count": len(products),
+            "sample_skus": [x["sku"] for x in products[:4]],
+            "avg_purity": avg_purity,
+            "dominant_grade": dominant_grade,
+            "lab_pass_rate": lab_pass_rate,
+        })
+
+    # Sort by average purity descending (highest quality first), then by variant count
+    out.sort(key=lambda g: (g["avg_purity"] or 0, g["variant_count"]), reverse=True)
+    return out[:limit]
+
+
 def portfolio_summary() -> Dict:
     """Numbers for the 'current state vs Agnes state' dashboard."""
     cands = consolidation_candidates(limit=10_000)

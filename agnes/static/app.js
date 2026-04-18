@@ -58,16 +58,24 @@ async function loadInventory() {
               <svg class="chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
             </div>
           </summary>
-          <div style="padding: 0 16px 16px 16px;">
+          <div style="padding: 0 16px 16px 16px; overflow-x: auto;">
           <table class="rich-table" style="width:100%;text-align:left;margin-top:0;">
-            <thead><tr><th>Canonical Name</th><th>Type</th><th>Suppliers</th><th>Market Price (Avg)</th></tr></thead>
+            <thead><tr><th>Canonical Name</th><th>Type</th><th>Purity</th><th>Grade</th><th>Lab Status</th><th>Market Price (Avg)</th></tr></thead>
             <tbody>
       `;
       for (const mat of sup.materials) {
+        const purity = mat.purity_percentage != null ? mat.purity_percentage.toFixed(1) + "%" : "—";
+        const purityColor = mat.purity_percentage >= 98 ? "var(--green)" : mat.purity_percentage >= 94 ? "#f0ad4e" : "var(--red)";
+        const gradeColor = mat.grade === "Pharma Grade" ? "rgba(0,184,255,0.15)" : "rgba(255,180,50,0.15)";
+        const gradeText = mat.grade === "Pharma Grade" ? "var(--accent)" : "#f0ad4e";
+        const labColor = mat.lab_status === "Passed" ? "rgba(0,200,100,0.15)" : "rgba(255,80,80,0.15)";
+        const labText = mat.lab_status === "Passed" ? "var(--green)" : "var(--red)";
         html += `<tr>
           <td style="font-weight: 500;">${mat.canonical_name || "—"}</td>
           <td><span style="background: rgba(0, 184, 255, 0.1); color: var(--accent); padding: 3px 6px; border-radius: 4px; font-size: 11px;">${mat.type}</span></td>
-          <td>${mat.supplier_count || 1}</td>
+          <td><b style="color:${purityColor}">${purity}</b></td>
+          <td><span style="background:${gradeColor}; color:${gradeText}; padding:3px 6px; border-radius:4px; font-size:11px;">${mat.grade || "—"}</span></td>
+          <td><span style="background:${labColor}; color:${labText}; padding:3px 6px; border-radius:4px; font-size:11px; font-weight:600;">${mat.lab_status || "—"}</span></td>
           <td>
             <b style="color:var(--green)">$${mat.market_price_avg.toFixed(2)}</b> /kg
           </td>

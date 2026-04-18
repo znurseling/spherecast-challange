@@ -84,13 +84,21 @@ def raw_type_matches(v: str) -> bool:
 
 def get_supplier_inventory() -> List[Dict]:
     s = schema()
-    # Fetch all products regardless of type, with original database names
+    # Fetch all products with quality metrics via LEFT JOINs
     q = f"""
         SELECT 
             su.{s["su_name"]} AS supplier_name,
+            su.{s["su_id"]} AS supplier_id,
             p.{s["p_sku"]} AS original_sku,
             p.{s["p_type"]} AS type,
-            c.supplier_count
+            p.{s["p_id"]} AS product_id,
+            c.supplier_count,
+            pq.PurityPercentage,
+            pq.Grade,
+            pq.Certifications,
+            pq.LabTestStatus,
+            spr.QualityAuditScore,
+            spr.SustainabilityRating
         FROM Supplier su
         JOIN Supplier_Product sp ON su.{s["su_id"]} = sp.{s["sp_supplier"]}
         JOIN Product p ON p.{s["p_id"]} = sp.{s["sp_product"]}
@@ -99,6 +107,10 @@ def get_supplier_inventory() -> List[Dict]:
             FROM Supplier_Product
             GROUP BY {s["sp_product"]}
         ) c ON c.{s["sp_product"]} = p.{s["p_id"]}
+        LEFT JOIN ProductQualitySpecs pq
+            ON pq.SupplierId = su.{s["su_id"]} AND pq.ProductId = p.{s["p_id"]}
+        LEFT JOIN SupplierPerformance spr
+            ON spr.SupplierId = su.{s["su_id"]}
         ORDER BY su.{s["su_name"]}, p.{s["p_sku"]}
     """
     with connection() as c:
@@ -109,7 +121,10 @@ def get_supplier_inventory() -> List[Dict]:
         
     # Fetch all available market prices to map them
     with connection() as c:
-        price_rows = c.execute("SELECT material_name, price_per_kg, min_price, max_price FROM market_prices").fetchall()
+        try:
+            price_rows = c.execute("SELECT material_name, price_per_kg, min_price, max_price FROM market_prices").fetchall()
+        except sqlite3.OperationalError:
+            price_rows = []
     # Sort by length descending to match more specific names first (e.g., 'magnesium stearate' before 'magnesium')
     sorted_rows = sorted(price_rows, key=lambda r: len(r["material_name"]), reverse=True)
     price_map = {r["material_name"].lower(): r for r in sorted_rows}
@@ -168,7 +183,13 @@ def get_supplier_inventory() -> List[Dict]:
             "market_price_avg": avg_p,
             "market_price_min": min_p,
             "market_price_max": max_p,
-            "is_estimate": is_estimate
+            "is_estimate": is_estimate,
+            "purity_percentage": r["PurityPercentage"],
+            "grade": r["Grade"],
+            "lab_status": r["LabTestStatus"],
+            "certifications": r["Certifications"],
+            "quality_audit_score": r["QualityAuditScore"],
+            "sustainability_rating": r["SustainabilityRating"],
         })
         
     # Sort materials for each supplier by the extracted hex_id
