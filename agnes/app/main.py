@@ -4,18 +4,23 @@ FastAPI application. This is what the mobile app talks to.
 Auth: every request must send `X-API-Key: <AGNES_API_KEY>`.
 Docs: http://localhost:8000/docs
 """
+from pathlib import Path
 from typing import List
 from fastapi import FastAPI, Depends, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 
 from .config import API_KEY, DB_PATH, LLM_ENABLED
 from .schemas import (
     HealthOut, CandidateOut, ProductDetailOut, SubstituteRequest,
     SubstituteOut, RecommendRequest, DashboardOut,
+    ChatRequest, ChatResponse,
 )
 from . import consolidation, recommender
 from .normalizer import normalize
 from .llm import assess_substitution
+from .chat import handle_chat
 
 
 # ---------- auth dependency ----------
@@ -46,6 +51,20 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# ---------- static files ----------
+
+STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
+
+
+@app.get("/", include_in_schema=False)
+def serve_index():
+    return FileResponse(STATIC_DIR / "index.html")
+
+
+# Mount static files AFTER the root route
+app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
 # ---------- routes ----------
@@ -133,3 +152,15 @@ def top(limit: int = Query(5, ge=1, le=20), mode: str = "strict"):
          tags=["analysis"])
 def dashboard():
     return DashboardOut(**consolidation.portfolio_summary())
+
+
+# ---------- chat endpoint ----------
+
+@app.post("/api/v1/chat",
+          response_model=ChatResponse,
+          dependencies=[Depends(require_api_key)],
+          tags=["chat"])
+def chat(req: ChatRequest):
+    """Natural-language chat interface to all Agnes capabilities."""
+    result = handle_chat(req.message)
+    return ChatResponse(**result)

@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Agnes — AI Supply Chain Manager. Conversational interface for CPG sourcing optimization.">
+  <title>Agnes — AI Supply Chain Manager</title>
+  <link rel="stylesheet" href="/static/styles.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔗</text></svg>">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <div class="logo-icon">🔗</div>
+        <div class="logo-text">
+          <h1>Agnes</h1>
+          <p>Supply Chain AI</p>
+        </div>
+      </div>
+      <div class="sidebar-stats" id="sidebarStats">
+        <div class="stat-card">
+          <div class="stat-label">Raw Materials</div>
+          <div class="stat-value" id="statRawMaterials">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Current Suppliers</div>
+          <div class="stat-value" id="statCurrentSuppliers">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Agnes Target</div>
+          <div class="stat-value" id="statAgnesTarget">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Reduction</div>
+          <div class="stat-value" id="statReduction">—</div>
+          <div class="stat-sub">supplier relationship savings</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Fragmented Materials</div>
+          <div class="stat-value" id="statFragmented">—</div>
+          <div class="stat-sub">needing consolidation</div>
+        </div>
+      </div>
+      <div class="sidebar-footer">
+        <div class="status-badge">
+          <div class="status-dot"></div>
+          <span id="statusText">Connecting…</span>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Chat Panel -->
+    <main class="main-panel">
+      <div class="chat-header">
+        <div>
+          <h2>Chat with Agnes</h2>
+          <div class="subtitle">AI-powered sourcing decisions</div>
+        </div>
+        <button class="btn-icon btn-speaker" id="btnSpeaker" title="Toggle voice output">
+          🔇
+        </button>
+      </div>
+
+      <div class="messages-container" id="messagesContainer">
+        <!-- Messages injected here -->
+      </div>
+
+      <div class="input-area">
+        <div class="audio-visualizer" id="audioVisualizer">
+          <div class="audio-bar"></div><div class="audio-bar"></div>
+          <div class="audio-bar"></div><div class="audio-bar"></div>
+          <div class="audio-bar"></div><div class="audio-bar"></div>
+          <div class="audio-bar"></div>
+        </div>
+        <div class="quick-actions">
+          <button class="quick-btn" data-msg="Show me the dashboard">📊 Dashboard</button>
+          <button class="quick-btn" data-msg="Top consolidation candidates">🔍 Candidates</button>
+          <button class="quick-btn" data-msg="Recommend sourcing for the most fragmented material">💡 Recommend</button>
+          <button class="quick-btn" data-msg="Tell me about product 200">📦 Product 200</button>
+          <button class="quick-btn" data-msg="Can 201 substitute 200?">🔄 Substitute</button>
+        </div>
+        <div class="input-row">
+          <button class="btn-icon btn-mic" id="btnMic" title="Voice input">🎙️</button>
+          <input type="text" class="chat-input" id="chatInput" placeholder="Ask Agnes anything about your supply chain…" autocomplete="off">
+          <button class="btn-icon btn-send" id="btnSend" title="Send">➤</button>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

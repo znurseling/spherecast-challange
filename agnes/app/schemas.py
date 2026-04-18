@@ -60,3 +60,15 @@ class DashboardOut(BaseModel):
     agnes_consolidated_relationships: int
     reduction_pct: float
     fragmented_materials: int
+
+
+class ChatRequest(BaseModel):
+    message: str = Field(..., description="User chat message")
+
+
+class ChatResponse(BaseModel):
+    type: str = Field(..., description="Response type: text, dashboard, table, product, substitution, recommendation")
+    message: str = Field(..., description="Human-readable message")
+    data: Optional[Dict[str, Any]] = Field(None, description="Structured data payload")
+    intent: Optional[str] = Field(None, description="Detected intent")
+    llm_enabled: Optional[bool] = Field(None, description="Whether LLM is active")

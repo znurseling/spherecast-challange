@@ -1,0 +1,280 @@
+"""
+Chat endpoint — natural-language interface to every Agnes capability.
+
+Receives a user message, detects intent via keyword/regex matching,
+calls the appropriate internal function, and returns a structured
+response the frontend renders as rich cards, tables, or plain text.
+"""
+import re
+import json
+from typing import Dict, List, Optional, Any
+from . import consolidation, recommender
+from .normalizer import normalize
+from .llm import assess_substitution
+from .config import LLM_ENABLED
+
+
+# ── Intent detection ────────────────────────────────────────────────
+
+_INTENTS = [
+    # (pattern, intent_name, description)
+    # ORDER MATTERS — more specific intents first
+    (r"\b(dashboard|overview|summary|portfolio|stats|status)\b", "dashboard",
+     "Show portfolio dashboard"),
+    (r"\b(candidates?|consolidat|fragment|opportunit)\b", "candidates",
+     "List consolidation candidates"),
+    (r"\b(substitut|replace|swap|interchange)\b", "substitute",
+     "Check substitution feasibility"),
+    (r"\b(recommend|suggest|propos|sourc)\b", "recommend",
+     "Get sourcing recommendation"),
+    (r"\b(product|detail|info|about)\b.*?\b(\d+)\b", "product_detail",
+     "Product detail lookup"),
+    (r"\b(help|what can you|commands|how do|capabilities)\b", "help",
+     "Show available commands"),
+    (r"\b(hello|hi|hey|greet|good morning|good evening)\b", "greeting",
+     "Greeting"),
+]
+
+
+def _detect_intent(message: str) -> str:
+    low = message.lower().strip()
+    for pattern, intent, _ in _INTENTS:
+        if re.search(pattern, low):
+            return intent
+    return "unknown"
+
+
+def _extract_numbers(message: str) -> List[int]:
+    return [int(x) for x in re.findall(r"\b(\d+)\b", message)]
+
+
+def _extract_mode(message: str) -> str:
+    if "creative" in message.lower():
+        return "creative"
+    return "strict"
+
+
+# ── Response builders ───────────────────────────────────────────────
+
+def _greeting_response() -> Dict:
+    return {
+        "type": "text",
+        "message": (
+            "👋 Hello! I'm **Agnes**, your AI Supply Chain Manager.\n\n"
+            "I can help you with:\n"
+            "- 📊 **Dashboard** — portfolio overview & consolidation stats\n"
+            "- 🔍 **Candidates** — find fragmented raw materials\n"
+            "- 📦 **Product details** — look up any raw material by ID\n"
+            "- 🔄 **Substitution checks** — can material B replace A?\n"
+            "- 💡 **Recommendations** — consolidated sourcing proposals\n\n"
+            "Try saying *\"show me the dashboard\"* or *\"top candidates\"*!"
+        ),
+    }
+
+
+def _help_response() -> Dict:
+    return {
+        "type": "text",
+        "message": (
+            "Here's what I can do:\n\n"
+            "| Command | Example |\n"
+            "|---|---|\n"
+            "| 📊 Dashboard | *\"show dashboard\"* |\n"
+            "| 🔍 Candidates | *\"top consolidation candidates\"* |\n"
+            "| 📦 Product detail | *\"tell me about product 200\"* |\n"
+            "| 🔄 Substitution | *\"can 201 substitute 200?\"* |\n"
+            "| 💡 Recommend | *\"recommend for product 200\"* |\n\n"
+            "You can also use the **quick action** buttons below the chat!"
+        ),
+    }
+
+
+def _dashboard_response() -> Dict:
+    summary = consolidation.portfolio_summary()
+    return {
+        "type": "dashboard",
+        "message": "Here's your portfolio overview:",
+        "data": {
+            "cards": [
+                {"label": "Raw Materials", "value": summary["raw_materials"],
+                 "icon": "🧪"},
+                {"label": "Current Suppliers", "value": summary["current_supplier_relationships"],
+                 "icon": "🏭"},
+                {"label": "Agnes Target", "value": summary["agnes_consolidated_relationships"],
+                 "icon": "🎯"},
+                {"label": "Reduction", "value": f"{summary['reduction_pct']}%",
+                 "icon": "📉"},
+                {"label": "Fragmented Materials", "value": summary["fragmented_materials"],
+                 "icon": "⚠️"},
+            ],
+        },
+    }
+
+
+def _candidates_response(message: str) -> Dict:
+    numbers = _extract_numbers(message)
+    limit = numbers[0] if numbers and numbers[0] <= 50 else 10
+    rows = consolidation.consolidation_candidates(limit=limit)
+    table_rows = []
+    for r in rows:
+        table_rows.append({
+            "id": r["product_id"],
+            "sku": r["sku"] or "—",
+            "companies": r["n_companies"],
+            "suppliers": r["n_suppliers"],
+            "boms": r["n_boms"],
+            "score": r["fragmentation_score"],
+        })
+    return {
+        "type": "table",
+        "message": f"Top **{len(table_rows)}** consolidation candidates ranked by fragmentation score:",
+        "data": {
+            "columns": [
+                {"key": "id", "label": "ID"},
+                {"key": "sku", "label": "SKU"},
+                {"key": "companies", "label": "Companies"},
+                {"key": "suppliers", "label": "Suppliers"},
+                {"key": "boms", "label": "BOMs"},
+                {"key": "score", "label": "Score"},
+            ],
+            "rows": table_rows,
+        },
+    }
+
+
+def _product_response(message: str) -> Dict:
+    numbers = _extract_numbers(message)
+    if not numbers:
+        return {"type": "text", "message": "Please specify a product ID, e.g. *\"product 200\"*"}
+    product_id = numbers[0]
+    detail = consolidation.product_detail(product_id)
+    if not detail:
+        return {"type": "text", "message": f"❌ Product **{product_id}** not found."}
+    norm = normalize(detail["sku"] or "")
+    return {
+        "type": "product",
+        "message": f"Details for product **{product_id}**:",
+        "data": {
+            "id": detail["id"],
+            "sku": detail["sku"],
+            "type": detail["type"],
+            "canonical_name": norm["canonical_name"],
+            "confidence": norm["confidence"],
+            "suppliers": detail["suppliers"],
+            "companies": detail["consumed_by_companies"],
+            "bom_count": detail["consuming_bom_count"],
+            "evidence": norm["evidence"],
+        },
+    }
+
+
+def _substitute_response(message: str) -> Dict:
+    numbers = _extract_numbers(message)
+    if len(numbers) < 2:
+        return {
+            "type": "text",
+            "message": "I need two product IDs to check substitution.\n\nExample: *\"can 201 substitute 200?\"*",
+        }
+    a_id, b_id = numbers[0], numbers[1]
+    a = consolidation.product_detail(a_id)
+    b = consolidation.product_detail(b_id)
+    if not a or not b:
+        return {"type": "text", "message": f"❌ One or both products ({a_id}, {b_id}) not found."}
+
+    mode = _extract_mode(message)
+    a_info = {
+        "product_id": a["id"], "sku": a["sku"],
+        "canonical_name": normalize(a["sku"] or "")["canonical_name"],
+        "supplier_ids": [s["id"] for s in a["suppliers"]],
+    }
+    b_info = {
+        "product_id": b["id"], "sku": b["sku"],
+        "canonical_name": normalize(b["sku"] or "")["canonical_name"],
+        "supplier_ids": [s["id"] for s in b["suppliers"]],
+    }
+    result = assess_substitution(a_info, b_info, mode=mode)
+
+    verdict_emoji = {"accept": "✅", "review": "🔍", "reject": "❌"}.get(
+        result["verdict"], "❓"
+    )
+
+    return {
+        "type": "substitution",
+        "message": f"Substitution analysis ({mode} mode):",
+        "data": {
+            "product_a": {"id": a_id, "sku": a["sku"],
+                          "canonical": a_info["canonical_name"]},
+            "product_b": {"id": b_id, "sku": b["sku"],
+                          "canonical": b_info["canonical_name"]},
+            "verdict": f"{verdict_emoji} {result['verdict'].upper()}",
+            "confidence": result["confidence"],
+            "reasoning": result["reasoning"],
+            "mode": mode,
+            "evidence": result["evidence"],
+        },
+    }
+
+
+def _recommend_response(message: str) -> Dict:
+    numbers = _extract_numbers(message)
+    mode = _extract_mode(message)
+
+    if not numbers:
+        # Fall back to top recommendations
+        recs = recommender.top_recommendations(limit=3, mode=mode)
+        if not recs:
+            return {"type": "text", "message": "No recommendations available."}
+        return {
+            "type": "recommendations",
+            "message": f"Top **{len(recs)}** sourcing recommendations ({mode} mode):",
+            "data": {"recommendations": recs},
+        }
+
+    product_id = numbers[0]
+    rec = recommender.recommend_for_product(product_id, mode=mode)
+    if "error" in rec:
+        return {"type": "text", "message": f"❌ {rec['error']}"}
+    return {
+        "type": "recommendation",
+        "message": f"Sourcing recommendation for product **{product_id}** ({mode} mode):",
+        "data": rec,
+    }
+
+
+def _unknown_response(message: str) -> Dict:
+    return {
+        "type": "text",
+        "message": (
+            "I'm not sure I understand. Here are some things you can ask:\n\n"
+            "- *\"Show me the dashboard\"*\n"
+            "- *\"Top consolidation candidates\"*\n"
+            "- *\"Product 200 details\"*\n"
+            "- *\"Can 201 substitute 200?\"*\n"
+            "- *\"Recommend sourcing for product 200\"*\n\n"
+            "Or just say **help**!"
+        ),
+    }
+
+
+# ── Main chat handler ──────────────────────────────────────────────
+
+_HANDLERS = {
+    "greeting":       lambda msg: _greeting_response(),
+    "help":           lambda msg: _help_response(),
+    "dashboard":      lambda msg: _dashboard_response(),
+    "candidates":     _candidates_response,
+    "product_detail": _product_response,
+    "substitute":     _substitute_response,
+    "recommend":      _recommend_response,
+    "unknown":        _unknown_response,
+}
+
+
+def handle_chat(message: str) -> Dict:
+    """Process a user chat message and return a structured response."""
+    intent = _detect_intent(message)
+    handler = _HANDLERS.get(intent, _unknown_response)
+    response = handler(message)
+    response["intent"] = intent
+    response["llm_enabled"] = LLM_ENABLED
+    return response
