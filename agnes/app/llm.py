@@ -1,5 +1,5 @@
 """
-Thin Anthropic client with a deterministic MOCK fallback.
+Thin Google Gemini client with a deterministic MOCK fallback.
 
 Why mock? Two reasons:
   1. Judges may run this without an API key.
@@ -11,13 +11,17 @@ endpoints always have a provenance trail — even when mocked.
 import json
 import re
 from typing import Dict, List, Optional
-from .config import ANTHROPIC_API_KEY, LLM_MODEL, LLM_ENABLED
+from .config import GOOGLE_API_KEY, LLM_MODEL, LLM_ENABLED
 
 try:
-    from anthropic import Anthropic
-    _client = Anthropic(api_key=ANTHROPIC_API_KEY) if LLM_ENABLED else None
+    import google.generativeai as genai
+    if LLM_ENABLED:
+        genai.configure(api_key=GOOGLE_API_KEY)
+        _model = genai.GenerativeModel(LLM_MODEL)
+    else:
+        _model = None
 except Exception:
-    _client = None
+    _model = None
 
 
 _NORM_RE = re.compile(r"[^a-zA-Z]+")
@@ -51,7 +55,7 @@ def _mock_canonical(sku: str) -> str:
 def canonicalize(sku: str) -> Dict:
     """Normalize a messy SKU to a canonical ingredient name."""
     mock = _mock_canonical(sku)
-    if not _client:
+    if not _model:
         return {
             "canonical_name": mock,
             "confidence": 0.6,
@@ -65,11 +69,8 @@ def canonicalize(sku: str) -> Dict:
         '{"canonical_name": "...", "confidence": 0.0-1.0, "reasoning": "..."}'
     )
     try:
-        resp = _client.messages.create(
-            model=LLM_MODEL, max_tokens=300,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        text = resp.content[0].text.strip()
+        resp = _model.generate_content(prompt)
+        text = resp.text.strip()
         # strip ``` fences if present
         text = re.sub(r"^```(?:json)?|```$", "", text, flags=re.MULTILINE).strip()
         data = json.loads(text)
@@ -128,7 +129,7 @@ def assess_substitution(
          "detail": f"{len(shared_suppliers)} shared supplier(s)"},
     ]
 
-    if not _client:
+    if not _model:
         return {
             "verdict": mock_verdict, "confidence": mock_conf,
             "reasoning": mock_reason, "evidence": evidence, "mode": mode,
@@ -156,11 +157,8 @@ Respond with ONLY a JSON object:
 Do not invent certifications or specs you cannot ground in the provided data."""
 
     try:
-        resp = _client.messages.create(
-            model=LLM_MODEL, max_tokens=500,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        text = resp.content[0].text.strip()
+        resp = _model.generate_content(prompt)
+        text = resp.text.strip()
         text = re.sub(r"^```(?:json)?|```$", "", text, flags=re.MULTILINE).strip()
         data = json.loads(text)
         evidence.append({
