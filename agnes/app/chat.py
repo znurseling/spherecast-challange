@@ -6,8 +6,7 @@ calls the appropriate internal function, and returns a structured
 response the frontend renders as rich cards, tables, or plain text.
 """
 import re
-import json
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Any
 from . import consolidation, recommender
 from .normalizer import normalize
 from .llm import assess_substitution, chat_with_agnes
@@ -52,6 +51,45 @@ def _extract_mode(message: str) -> str:
     if "creative" in message.lower():
         return "creative"
     return "strict"
+
+
+def _chat_context(message: str) -> Dict[str, Any]:
+    numbers = _extract_numbers(message)
+    candidates = consolidation.consolidation_candidates(limit=3)
+    context: Dict[str, Any] = {
+        "portfolio_summary": consolidation.portfolio_summary(),
+        "top_candidates": [
+            {
+                "product_id": row["product_id"],
+                "sku": row["sku"],
+                "fragmentation_score": row["fragmentation_score"],
+                "n_companies": row["n_companies"],
+                "n_suppliers": row["n_suppliers"],
+            }
+            for row in candidates
+        ],
+    }
+
+    if numbers:
+        products = []
+        for product_id in numbers[:3]:
+            detail = consolidation.product_detail(product_id)
+            if not detail:
+                continue
+            norm = normalize(detail["sku"] or "")
+            products.append({
+                "id": detail["id"],
+                "sku": detail["sku"],
+                "type": detail["type"],
+                "canonical_name": norm["canonical_name"],
+                "suppliers": [s["name"] for s in detail["suppliers"]],
+                "companies": [c["name"] for c in detail["consumed_by_companies"]],
+                "bom_count": detail["consuming_bom_count"],
+            })
+        if products:
+            context["referenced_products"] = products
+
+    return context
 
 
 # ── Response builders ───────────────────────────────────────────────
@@ -243,7 +281,7 @@ def _recommend_response(message: str) -> Dict:
 
 def _unknown_response(message: str) -> Dict:
     if LLM_ENABLED:
-        text = chat_with_agnes(message)
+        text = chat_with_agnes(message, context=_chat_context(message))
         if text:
             return {"type": "text", "message": text}
     

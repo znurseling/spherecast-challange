@@ -181,14 +181,22 @@ Do not invent certifications or specs you cannot ground in the provided data."""
             "reasoning": mock_reason, "evidence": evidence, "mode": mode,
         }
 
-def chat_with_agnes(message: str) -> str:
-    """Fallback conversational chat when no structured intent matches."""
+def chat_with_agnes(message: str, context: Optional[Dict] = None) -> str:
+    """Fallback conversational chat with optional DB-backed context."""
     if not _model:
         return ""
+    ctx = context or {}
     prompt = (
-        "You are Agnes, a highly intelligent AI Supply Chain Manager. "
-        "A user just said: " + message + "\n\n"
-        "Reply conversationally. Feel free to provide long and detailed answers."
+        "You are Agnes, a highly intelligent AI Supply Chain Manager.\n"
+        "You are embedded in an application that can access its SQLite procurement "
+        "database through the backend.\n"
+        "Use the provided database context when answering.\n"
+        "Do not say you cannot access the database if context is present.\n"
+        "If the answer is not supported by the provided context, say what is missing "
+        "and suggest a supported query.\n\n"
+        f"User message: {message}\n\n"
+        f"Database context:\n{json.dumps(ctx, indent=2)[:4000]}\n\n"
+        "Reply conversationally and ground claims in the provided context."
     )
     try:
         resp = _model.generate_content(prompt)
