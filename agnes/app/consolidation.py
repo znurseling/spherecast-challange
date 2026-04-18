@@ -159,13 +159,17 @@ def search_by_material(keyword: str) -> Dict:
 
     supplier_names = {}
     supplier_to_products = defaultdict(list)
+    product_to_suppliers = defaultdict(list)
     for sp in d["sps"]:
-        if sp[s["sp_product"]] in match_ids:
+        pid = sp[s["sp_product"]]
+        if pid in match_ids:
             sup = d["suppliers"].get(sp[s["sp_supplier"]])
             if sup:
                 sid = sup[s["su_id"]]
-                supplier_names[sid] = sup[s["su_name"]]
-                supplier_to_products[sid].append(sp[s["sp_product"]])
+                sname = sup[s["su_name"]]
+                supplier_names[sid] = sname
+                supplier_to_products[sid].append(pid)
+                product_to_suppliers[pid].append(sname)
 
     bom_company = {}
     for bom in d["boms"]:
@@ -192,7 +196,11 @@ def search_by_material(keyword: str) -> Dict:
     # can see e.g. "Zinc (5)" vs "Zinc Oxide (16)" as interchangeable sets.
     groups: Dict[str, List[Dict]] = defaultdict(list)
     for m in matches:
-        groups[m["canonical"]].append({"id": m["id"], "sku": m["sku"]})
+        groups[m["canonical"]].append({
+            "id": m["id"], 
+            "sku": m["sku"],
+            "suppliers": product_to_suppliers.get(m["id"], [])
+        })
     group_list = sorted(
         [{"canonical_name": k, "count": len(v), "products": v}
          for k, v in groups.items()],
@@ -286,6 +294,15 @@ def find_substitutes_with_quality(keyword: str, limit: int = 10) -> List[Dict]:
     except Exception:
         pass
 
+    # Fetch supplier names for these product IDs
+    supplier_map: Dict[int, List[str]] = defaultdict(list)
+    for sp in d["sps"]:
+        pid = sp[s["sp_product"]]
+        if pid in all_pids:
+            sup = d["suppliers"].get(sp[s["sp_supplier"]])
+            if sup:
+                supplier_map[pid].append(sup[s["su_name"]])
+
     out = []
     for canon, products in groups.items():
         # Aggregate quality across all supplier entries for products in this group
@@ -307,6 +324,12 @@ def find_substitutes_with_quality(keyword: str, limit: int = 10) -> List[Dict]:
         avg_purity = round(sum(purities) / len(purities), 1) if purities else None
         lab_pass_rate = round(lab_passed / lab_total * 100, 1) if lab_total else None
         dominant_grade = max(grades, key=grades.get) if any(grades.values()) else None
+        
+        # Collect unique suppliers for this canonical group
+        group_suppliers = set()
+        for p in products:
+            for sname in supplier_map.get(p["id"], []):
+                group_suppliers.add(sname)
 
         out.append({
             "canonical_name": canon,
@@ -315,6 +338,7 @@ def find_substitutes_with_quality(keyword: str, limit: int = 10) -> List[Dict]:
             "avg_purity": avg_purity,
             "dominant_grade": dominant_grade,
             "lab_pass_rate": lab_pass_rate,
+            "suppliers": sorted(list(group_suppliers))
         })
 
     # Sort by average purity descending (highest quality first), then by variant count
