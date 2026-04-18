@@ -99,6 +99,21 @@ def _chat_context(message: str) -> Dict[str, Any]:
     if material_hits:
         context["material_search"] = material_hits
 
+    # 5. Market Prices
+    material = _extract_keyword(message)
+    if material:
+        q_prices = "SELECT price_per_kg, min_price, max_price, currency FROM market_prices WHERE material_name LIKE ?"
+        with connection() as c:
+            price_row = c.execute(q_prices, (f"%{material}%",)).fetchone()
+        
+        if price_row:
+            context["market_price"] = {
+                "avg_price_per_kg": price_row["price_per_kg"],
+                "min_price": price_row["min_price"],
+                "max_price": price_row["max_price"],
+                "currency": price_row["currency"]
+            }
+
     return context
 
 

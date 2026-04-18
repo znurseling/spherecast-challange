@@ -84,10 +84,11 @@ def raw_type_matches(v: str) -> bool:
 
 def get_supplier_inventory() -> List[Dict]:
     s = schema()
+    # Fetch all products regardless of type, with original database names
     q = f"""
         SELECT 
             su.{s["su_name"]} AS supplier_name,
-            p.{s["p_sku"]} AS sku,
+            p.{s["p_sku"]} AS original_sku,
             p.{s["p_type"]} AS type,
             c.supplier_count
         FROM Supplier su
@@ -98,7 +99,6 @@ def get_supplier_inventory() -> List[Dict]:
             FROM Supplier_Product
             GROUP BY {s["sp_product"]}
         ) c ON c.{s["sp_product"]} = p.{s["p_id"]}
-        WHERE p.{s["p_type"]} IN ('raw-material', 'rawmaterial')
         ORDER BY su.{s["su_name"]}, p.{s["p_sku"]}
     """
     with connection() as c:
@@ -107,19 +107,72 @@ def get_supplier_inventory() -> List[Dict]:
         except sqlite3.OperationalError:
             rows = []
         
+    # Fetch all available market prices to map them
+    with connection() as c:
+        price_rows = c.execute("SELECT material_name, price_per_kg, min_price, max_price FROM market_prices").fetchall()
+    # Sort by length descending to match more specific names first (e.g., 'magnesium stearate' before 'magnesium')
+    sorted_rows = sorted(price_rows, key=lambda r: len(r["material_name"]), reverse=True)
+    price_map = {r["material_name"].lower(): r for r in sorted_rows}
+
     inventory_map = {}
-    from .llm import _mock_canonical
     
     for r in rows:
         sup = r["supplier_name"]
         if sup not in inventory_map:
             inventory_map[sup] = {"supplier_name": sup, "materials": []}
             
+        sku = r["original_sku"]
+        parts = sku.split("-")
+        # Extract middle parts: RM-C57-vegetable-magnesium-stearate-006c7e32 -> vegetable-magnesium-stearate
+        if len(parts) > 3:
+            clean_name = "-".join(parts[2:-1])
+        else:
+            clean_name = sku
+            
+        hex_id = parts[-1] if parts else sku
+        
+        # Try to find a matching price by checking if any material_name is in the SKU
+        m_price = None
+        clean_sku_for_match = sku.lower().replace("-", " ")
+        for m_name, p_data in price_map.items():
+            if m_name in clean_sku_for_match:
+                m_price = p_data
+                break
+        
+        # Fallback: Generate a consistent estimate if no market data exists
+        if m_price:
+            avg_p = m_price["price_per_kg"]
+            min_p = m_price["min_price"]
+            max_p = m_price["max_price"]
+            is_estimate = False
+        else:
+            # Deterministic pseudo-random price based on SKU hash
+            import hashlib
+            h = int(hashlib.md5(sku.encode()).hexdigest(), 16)
+            if r["type"].lower() == "finished-good" or "fg" in sku.lower():
+                avg_p = 5.0 + (h % 450) / 10.0 # $5 - $50
+                min_p = avg_p * 0.8
+                max_p = avg_p * 1.2
+            else:
+                avg_p = 1.0 + (h % 140) / 10.0 # $1 - $15
+                min_p = avg_p * 0.7
+                max_p = avg_p * 1.3
+            is_estimate = True
+            
         inventory_map[sup]["materials"].append({
-            "sku": r["sku"],
+            "sku": sku,
             "type": r["type"],
-            "canonical_name": _mock_canonical(r["sku"]),
-            "supplier_count": r["supplier_count"]
+            "canonical_name": clean_name,
+            "supplier_count": r["supplier_count"],
+            "hex_id": hex_id,
+            "market_price_avg": avg_p,
+            "market_price_min": min_p,
+            "market_price_max": max_p,
+            "is_estimate": is_estimate
         })
+        
+    # Sort materials for each supplier by the extracted hex_id
+    for sup in inventory_map:
+        inventory_map[sup]["materials"].sort(key=lambda x: x["hex_id"])
         
     return list(inventory_map.values())

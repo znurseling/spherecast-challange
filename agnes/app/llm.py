@@ -278,7 +278,8 @@ def chat_with_agnes(message: str, context: Optional[Dict] = None, history: Optio
         "2. DO NOT give technical advice about data points or database structure.\n"
         "3. DO NOT use phrases like 'feel free to ask for a different data point'.\n"
         "4. Focus entirely on supply chain insights, risks, and recommendations.\n"
-        "5. If you cannot answer based on context, simply state what is missing without suggesting technical queries.\n\n"
+        "5. If market price data ('market_price') is present in the context, use it to provide cost insights or compare with current sourcing.\n"
+        "6. If you cannot answer based on context, simply state what is missing without suggesting technical queries.\n\n"
         f"Database context:\n{json.dumps(ctx, indent=2)[:4000]}\n\n"
         f"User message: {message}\n"
     )

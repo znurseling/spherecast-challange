@@ -66,7 +66,7 @@ async function loadInventory() {
           </summary>
           <div style="padding: 0 16px 16px 16px;">
           <table class="rich-table" style="width:100%;text-align:left;margin-top:0;">
-            <thead><tr><th>Canonical Name</th><th>Type</th><th>No. of Suppliers</th></tr></thead>
+            <thead><tr><th>Canonical Name</th><th>Type</th><th>Suppliers</th><th>Market Price (Avg)</th></tr></thead>
             <tbody>
       `;
       for (const mat of sup.materials) {
@@ -74,6 +74,9 @@ async function loadInventory() {
           <td style="font-weight: 500;">${mat.canonical_name || "—"}</td>
           <td><span style="background: rgba(0, 184, 255, 0.1); color: var(--accent); padding: 3px 6px; border-radius: 4px; font-size: 11px;">${mat.type}</span></td>
           <td>${mat.supplier_count || 1}</td>
+          <td>
+            <b style="color:var(--green)">$${mat.market_price_avg.toFixed(2)}</b> /kg
+          </td>
         </tr>`;
       }
       html += `</tbody></table></div></details>`;

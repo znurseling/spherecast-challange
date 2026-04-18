@@ -80,6 +80,10 @@ class InventoryItem(BaseModel):
     type: str
     canonical_name: Optional[str]
     supplier_count: Optional[int]
+    market_price_avg: Optional[float] = None
+    market_price_min: Optional[float] = None
+    market_price_max: Optional[float] = None
+    is_estimate: Optional[bool] = False
 
 
 class SupplierInventoryOut(BaseModel):
