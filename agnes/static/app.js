@@ -351,52 +351,6 @@ $input.addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey) 
 $btnMic.addEventListener("click", toggleRecording);
 $btnSpeaker.addEventListener("click", toggleTTS);
 
-// Upload SQL handling
-const $btnUpload = document.getElementById('btnUpload');
-const $sqlUpload = document.getElementById('sqlUpload');
-
-if ($btnUpload && $sqlUpload) {
-  $btnUpload.addEventListener('click', () => {
-    $sqlUpload.click();
-  });
-
-  $sqlUpload.addEventListener('change', async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    
-    const $btn = document.getElementById('btnUpload');
-    const originalHtml = $btn.innerHTML;
-    $btn.innerHTML = '⏳ Uploading...';
-    $btn.style.opacity = '0.7';
-
-    const formData = new FormData();
-    formData.append('file', file);
-    try {
-      const r = await fetch('/api/v1/upload-sql', {
-        method: 'POST',
-        headers: { 'X-API-Key': API_KEY },
-        body: formData,
-      });
-      const data = await r.json();
-      addBotMessage({ type: 'text', message: data.message });
-      
-      // Update button to show success
-      $btn.innerHTML = '🧠 Brain Loaded';
-      $btn.style.background = 'rgba(52, 211, 153, 0.1)';
-      $btn.style.borderColor = 'var(--green)';
-      $btn.style.color = 'var(--green)';
-      
-      // Refresh dashboard to reflect new data
-      loadDashboard();
-    } catch (err) {
-      addBotMessage({ type: 'text', message: `❌ Upload failed: ${err.message}` });
-      $btn.innerHTML = originalHtml;
-      $btn.style.opacity = '1';
-    }
-    $sqlUpload.value = '';
-  });
-}
-
 document.querySelectorAll(".quick-btn").forEach(btn => {
   btn.addEventListener("click", () => sendMessage(btn.dataset.msg));
 });

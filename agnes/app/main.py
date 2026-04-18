@@ -166,51 +166,13 @@ from .db import get_supplier_inventory
 def inventory():
     return get_supplier_inventory()
 
-
-@app.post("/api/v1/upload-sql",
-          dependencies=[Depends(require_api_key)],
-          tags=["system"])
-async def upload_sql(request: Request, file: UploadFile = File(...)):
-    """Upload a custom .sql, .sqlite, or .db database file."""
-    ext = Path(file.filename).suffix.lower()
-    if ext not in (".sql", ".sqlite", ".db"):
-        raise HTTPException(400, "Only .sql, .sqlite, or .db files are supported.")
-    
-    content = await file.read()
-    
-    try:
-        if ext == ".sql":
-            # Execute SQL script on the current database
-            sql_text = content.decode("utf-8")
-            conn = sqlite3.connect(DB_PATH)
-            conn.executescript(sql_text)
-            conn.commit()
-            conn.close()
-            schema.cache_clear()
-            request.app.state.uploaded_sql = sql_text
-            msg = f"Successfully executed {file.filename} and updated Agnes' SQLite database!"
-        else:
-            # Overwrite the current SQLite database with the uploaded file
-            with open(DB_PATH, "wb") as f:
-                f.write(content)
-            # Clear previous state as the whole DB changed
-            schema.cache_clear()
-            request.app.state.uploaded_sql = None
-            msg = f"Successfully replaced Agnes' brain with {file.filename}!"
-            
-        return {"message": msg}
-    except Exception as e:
-        raise HTTPException(500, f"Error processing file: {str(e)}")
-
-
 # ---------- chat endpoint ----------
 
 @app.post("/api/v1/chat",
           response_model=ChatResponse,
           dependencies=[Depends(require_api_key)],
           tags=["chat"])
-def chat(request: Request, req: ChatRequest):
+def chat(req: ChatRequest):
     """Natural-language chat interface to all Agnes capabilities."""
-    uploaded_sql = getattr(request.app.state, "uploaded_sql", None)
-    result = handle_chat(req.message, uploaded_sql=uploaded_sql)
+    result = handle_chat(req.message)
     return ChatResponse(**result)
