@@ -22,6 +22,8 @@ _INTENTS = [
      "material_count", "Count raw materials by name"),
     (r"\b(dashboard|overview|summary|portfolio|stats|status)\b", "dashboard",
      "Show portfolio dashboard"),
+    (r"\b(deliver|supply|produce|request|order).*\d+.*(but|only|have|short)\b", "order_fulfillment",
+     "Fulfill order with potential shortage"),
     (r"\b(candidates?|consolidat|fragment|opportunit)\b", "candidates",
      "List consolidation candidates"),
     (r"\b(substitut|replace|swap|interchange)\b", "substitute",
@@ -600,6 +602,68 @@ def _material_evidence_fallback(material: str, res: Dict,
     }
 
 
+def _order_fulfillment_offline(message: str) -> Dict:
+    return {
+        "type": "text", 
+        "message": "Order fulfillment and substitution reasoning requires the AI to be enabled."
+    }
+
+def _order_fulfillment_from_plan(message: str, plan: Dict) -> Dict:
+    material = plan.get("material")
+    req = plan.get("requested_amount")
+    avail = plan.get("available_amount")
+
+    if not material or req is None:
+        return _llm_chat_response(message, plan)
+
+    if avail is None:
+        avail = 0
+        
+    try:
+        req = float(req)
+        avail = float(avail)
+    except (ValueError, TypeError):
+        return _llm_chat_response(message, plan)
+        
+    deficit = req - avail
+    if deficit <= 0:
+        return {
+            "type": "text",
+            "message": f"We have enough **{material}** to fulfill the request of {req}."
+        }
+
+    subs = consolidation.find_substitutes(material, limit=5)
+    
+    evidence = {
+        "action": "order_fulfillment",
+        "material": material,
+        "requested": req,
+        "available": avail,
+        "deficit": deficit,
+        "substitute_candidates": subs
+    }
+
+    if LLM_ENABLED:
+        prompt = (f"The client requested {req} of {material}, but we only have {avail}. "
+                  f"We need {deficit} more. Suggest a reliable substitute to fulfill the "
+                  f"remaining {deficit}. "
+                  f"Here are the viable database substitutes: {str(subs[:3])}. "
+                  "Pick the most functionally equivalent substitute (e.g. matching 'ascorbic acid' with 'Vitamin C' and avoiding unrelated items) "
+                  "and explain how it can be used to cover the deficit. Respond in clear, helpful natural language. DO NOT hallucinate specs.")
+        text = chat_with_agnes(prompt, context=evidence)
+        if text:
+            return {"type": "text", "message": text, "data": evidence}
+
+    if not subs:
+        return {"type": "text", "message": f"Client requested **{req}** of **{material}**, but only **{avail}** is available. No viable substitutes found for the remaining **{deficit}**."}
+
+    sub_lines = "\n".join(f"- **{s['canonical_name']}**" for s in subs[:3])
+    msg = (f"Client requested **{req}** of **{material}**, but only **{avail}** is available.\n\n"
+           f"To fulfill the remaining **{deficit}**, consider these viable substitutions:\n{sub_lines}")
+    
+    return {"type": "text", "message": msg, "data": evidence}
+
+
 def _llm_chat_response(message: str, plan: Dict, history: Optional[List[Dict[str, str]]] = None) -> Dict:
     """Open-ended question routed to the LLM with the standard DB context."""
     if LLM_ENABLED:
@@ -620,6 +684,7 @@ _HANDLERS = {
     "product_detail": _product_response,
     "substitute":     _substitute_response,
     "recommend":      _recommend_response,
+    "order_fulfillment": _order_fulfillment_offline,
     "unknown":        _unknown_response,
 }
 
@@ -631,6 +696,7 @@ _ACTION_TO_INTENT = {
     "product_detail":  "product_detail",
     "substitute":      "substitute",
     "recommend":       "recommend",
+    "order_fulfillment": "order_fulfillment",
     "greeting":        "greeting",
     "help":            "help",
     "chat":            "unknown",
@@ -645,6 +711,8 @@ def _dispatch_plan(message: str, plan: Dict, history: Optional[List[Dict[str, st
         return _material_query_from_plan(message, plan)
     if action == "dashboard":
         return _dashboard_response()
+    if action == "order_fulfillment":
+        return _order_fulfillment_from_plan(message, plan)
     if action == "candidates":
         return _candidates_response(message)
     if action == "product_detail":

@@ -214,6 +214,7 @@ Actions:
 - "substitute": user asks whether product X can replace product Y
   (needs two product IDs).
 - "recommend": user wants a sourcing recommendation for a product/ID.
+- "order_fulfillment": user wants to deliver or supply a specific amount of a product.
 - "greeting" / "help" / "chat": small talk or open-ended.
 
 For material_query, extract:
@@ -224,6 +225,11 @@ For material_query, extract:
   wants_companies   = true if they asked which company consumes / buys / uses it.
   wants_substitutes = true if they asked for alternatives / substitutes / swap.
   wants_efficient   = true if they asked for "most efficient" / "best" / "single supplier".
+
+For order_fulfillment, extract:
+  material          = the canonical ingredient name requested.
+  requested_amount  = the numeric amount the client requested (null if not found).
+  available_amount  = the numeric amount we currently have (null if not found).
 
 Also extract product_ids (array of integers mentioned) and mode (strict|creative, default strict).
 
@@ -239,6 +245,8 @@ User message: {message}
         data = json.loads(text)
         data.setdefault("action", "chat")
         data.setdefault("material", None)
+        data.setdefault("requested_amount", None)
+        data.setdefault("available_amount", None)
         data.setdefault("product_ids", [])
         for flag in ("wants_count", "wants_suppliers", "wants_companies",
                      "wants_substitutes", "wants_efficient"):
