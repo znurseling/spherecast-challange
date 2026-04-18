@@ -214,7 +214,7 @@ def _dashboard_response() -> Dict:
     summary = consolidation.portfolio_summary()
     return {
         "type": "dashboard",
-        "message": "Here's your portfolio overview:",
+        "message": "📊 **Agnes Portfolio Intelligence Report**\n\nI've analyzed your raw material supply chain. Here's a snapshot of our current sourcing fragmentation and the potential for consolidation:",
         "data": {
             "cards": [
                 {"label": "Raw Materials", "value": summary["raw_materials"],
@@ -248,7 +248,7 @@ def _candidates_response(message: str) -> Dict:
         })
     return {
         "type": "table",
-        "message": f"Top **{len(table_rows)}** consolidation candidates ranked by fragmentation score:",
+        "message": "🔍 **Consolidation Opportunity Analysis**\n\nI've identified these materials as the most fragmented across your portfolio. Consolidating these to a preferred vendor offers the highest ROI on procurement leverage:",
         "data": {
             "columns": [
                 {"key": "id", "label": "ID"},
@@ -321,7 +321,7 @@ def _substitute_response(message: str) -> Dict:
 
     return {
         "type": "substitution",
-        "message": f"Substitution analysis ({mode} mode):",
+        "message": "🔄 **Agnes Smart Substitution Engine**\n\nI've performed a cross-check of specifications, supplier history, and external compliance data for these two materials:",
         "data": {
             "product_a": {"id": a_id, "sku": a["sku"],
                           "canonical": a_info["canonical_name"]},
@@ -347,7 +347,7 @@ def _recommend_response(message: str) -> Dict:
             return {"type": "text", "message": "No recommendations available."}
         return {
             "type": "recommendations",
-            "message": f"Top **{len(recs)}** sourcing recommendations ({mode} mode):",
+            "message": f"💡 **Sourcing Optimization Proposals** ({mode} mode)\n\nBased on your historical vendor data and material commonality, I recommend the following strategic consolidations:",
             "data": {"recommendations": recs},
         }
 
@@ -357,7 +357,7 @@ def _recommend_response(message: str) -> Dict:
         return {"type": "text", "message": f"❌ {rec['error']}"}
     return {
         "type": "recommendation",
-        "message": f"Sourcing recommendation for product **{product_id}** ({mode} mode):",
+        "message": f"💡 **Strategic Recommendation for Product **{product_id}** ({mode} mode)\n\nI've analyzed the supply chain for this material and found a more efficient sourcing route:",
         "data": rec,
     }
 
