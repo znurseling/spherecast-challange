@@ -8,7 +8,6 @@ const $btnSend    = document.getElementById("btnSend");
 const $btnMic     = document.getElementById("btnMic");
 const $btnSpeaker = document.getElementById("btnSpeaker");
 const $audioViz   = document.getElementById("audioVisualizer");
-const $status     = document.getElementById("statusText");
 
 const $chatPanel        = document.getElementById("chatPanel");
 const $inventoryPanel   = document.getElementById("inventoryPanel");
@@ -24,10 +23,6 @@ let chatHistory = []; // Local memory for the session
 /* ── Init ─────────────────────────────────────── */
 document.addEventListener("DOMContentLoaded", () => {
   loadDashboard();
-  addBotMessage({
-    type: "text",
-    message: "👋 Hello! I'm **Agnes**, your intelligent Supply Chain companion.\n\nI'm here to help you optimize your sourcing and analyze your data. My core capabilities include:\n\n- **Inventory Tracking**: I can help you review the current raw materials provided by your suppliers.\n- **Consolidation Analysis**: I identify highly fragmented materials that are perfect candidates for supplier consolidation.\n- **Substitution Checking**: I can reason about whether one raw material can safely replace another.\n- **Smart Recommendations**: I provide AI-powered advice on how to streamline your sourcing and reduce supplier redundancy.\n\nJust type or click the microphone to ask me anything about your supply chain!"
-  });
   setupSpeechRecognition();
 });
 
@@ -37,9 +32,8 @@ async function loadDashboard() {
     const r = await fetch("/api/v1/dashboard", { headers: HEADERS });
     if (!r.ok) throw new Error(r.status);
     const d = await r.json();
-    $status.textContent = "Agnes Online";
   } catch {
-    $status.textContent = "Offline — start server";
+    console.error("Dashboard load failed");
   }
 }
 
@@ -94,37 +88,6 @@ function showChat() {
   scrollBottom();
 }
 
-/* ── Send message ─────────────────────────────── */
-async function sendMessage(text) {
-  if (!text.trim()) return;
-  
-  const currentHistory = [...chatHistory]; // Clone current state
-  addUserMessage(text);
-  chatHistory.push({ role: "user", content: text });
-  
-  $input.value = "";
-  const typingEl = showTyping();
-
-  try {
-    const r = await fetch("/api/v1/chat", {
-      method: "POST", headers: HEADERS,
-      body: JSON.stringify({ message: text, history: currentHistory }),
-    });
-    removeTyping(typingEl);
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    const data = await r.json();
-    addBotMessage(data);
-    
-    // Store Agnes' response in history for next turn
-    chatHistory.push({ role: "bot", content: data.message });
-    
-    if (ttsEnabled) speak(data.message);
-    if (data.intent === "dashboard") loadDashboard();
-  } catch (e) {
-    removeTyping(typingEl);
-    addBotMessage({ type: "text", message: `❌ Error: ${e.message}. Is the server running?` });
-  }
-}
 
 /* ── Message rendering ────────────────────────── */
 function addUserMessage(text) {
@@ -357,14 +320,46 @@ if (window.speechSynthesis) {
   window.speechSynthesis.onvoiceschanged = () => window.speechSynthesis.getVoices();
 }
 
+const $welcomeSection = document.getElementById("welcomeSection");
+
+async function sendMessage(text) {
+  if (!text || text.trim() === "") return;
+  $input.value = "";
+  
+  // Hide welcome section on first message
+  if ($welcomeSection) $welcomeSection.style.display = "none";
+
+  addUserMessage(text);
+  const currentHistory = [...chatHistory];
+  chatHistory.push({ role: "user", content: text });
+
+  const typing = showTyping();
+  try {
+    const r = await fetch("/api/v1/chat", {
+      method: "POST",
+      headers: HEADERS,
+      body: JSON.stringify({ message: text, history: currentHistory })
+    });
+    const d = await r.json();
+    removeTyping(typing);
+    addBotMessage(d);
+    chatHistory.push({ role: "model", content: d.message });
+    if (ttsEnabled) speak(d.message);
+    if (d.intent === "dashboard") loadDashboard();
+  } catch (err) {
+    removeTyping(typing);
+    addBotMessage({ message: "Error: " + err.message });
+  }
+}
+
 /* ── Event listeners ──────────────────────────── */
 $btnSend.addEventListener("click", () => sendMessage($input.value));
 $input.addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage($input.value); } });
 $btnMic.addEventListener("click", toggleRecording);
 $btnSpeaker.addEventListener("click", toggleTTS);
 
-document.querySelectorAll(".quick-btn").forEach(btn => {
-  btn.addEventListener("click", () => sendMessage(btn.dataset.msg));
+document.querySelectorAll(".clickable-cap").forEach(card => {
+  card.addEventListener("click", () => sendMessage(card.dataset.msg));
 });
 
 if ($btnAskAgnes) $btnAskAgnes.addEventListener("click", (e) => { e.preventDefault(); showChat(); });
