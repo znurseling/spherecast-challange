@@ -188,7 +188,7 @@ def chat_with_agnes(message: str) -> str:
     prompt = (
         "You are Agnes, a highly intelligent AI Supply Chain Manager. "
         "A user just said: " + message + "\n\n"
-        "Reply conversationally and concisely."
+        "Reply conversationally. Feel free to provide long and detailed answers."
     )
     try:
         resp = _model.generate_content(prompt)
