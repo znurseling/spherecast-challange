@@ -2,6 +2,7 @@
 import os
 from pathlib import Path
 from dotenv import load_dotenv
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 load_dotenv()
 
@@ -21,3 +22,9 @@ LLM_ENABLED = bool(GOOGLE_API_KEY)
 # strict  -> only 1:1 canonical matches
 # creative -> functional equivalents (different chemistry, same role)
 DEFAULT_MODE = "strict"
+
+# Email Settings
+SMTP_HOST = os.getenv("SMTP_HOST", "smtp.gmail.com")
+SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
+SMTP_USER = os.getenv("SMTP_USER", "spherecastagnesai@gmail.com")
+SMTP_PASS = os.getenv("SMTP_PASS", "") # Set this in .env!

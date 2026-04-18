@@ -9,6 +9,7 @@ import re
 from typing import Dict, List, Optional, Any
 from . import consolidation, recommender
 from .normalizer import normalize
+from .email_utils import send_email
 from .llm import assess_substitution, chat_with_agnes, understand_message
 from .config import LLM_ENABLED
 from .db import connection
@@ -704,6 +705,24 @@ def _order_fulfillment_from_plan(message: str, plan: Dict) -> Dict:
     return {"type": "text", "message": msg, "data": evidence}
 
 
+def _email_response(plan: Dict) -> Dict:
+    recipient = plan.get("recipient")
+    subject = plan.get("subject") or "Message from Agnes (Supply Chain AI)"
+    body = plan.get("body")
+
+    if not recipient or not body:
+        return {
+            "type": "text",
+            "message": "I need a recipient email and a message body to send an email."
+        }
+
+    success, msg = send_email(recipient, subject, body)
+    return {
+        "type": "text",
+        "message": f"{'✅' if success else '❌'} {msg}"
+    }
+
+
 def _llm_chat_response(message: str, plan: Dict, history: Optional[List[Dict[str, str]]] = None) -> Dict:
     """Open-ended question routed to the LLM with the standard DB context."""
     if LLM_ENABLED:
@@ -725,6 +744,7 @@ _HANDLERS = {
     "substitute":     _substitute_response,
     "recommend":      _recommend_response,
     "order_fulfillment": _order_fulfillment_offline,
+    "send_email":     _email_response,
     "unknown":        _unknown_response,
 }
 
@@ -737,6 +757,7 @@ _ACTION_TO_INTENT = {
     "substitute":      "substitute",
     "recommend":       "recommend",
     "order_fulfillment": "order_fulfillment",
+    "send_email":      "send_email",
     "greeting":        "greeting",
     "help":            "help",
     "chat":            "unknown",
@@ -776,6 +797,8 @@ def _dispatch_plan(message: str, plan: Dict, history: Optional[List[Dict[str, st
         return _greeting_response()
     if action == "help":
         return _help_response()
+    if action == "send_email":
+        return _email_response(plan)
     return _llm_chat_response(message, plan, history=history)
 
 

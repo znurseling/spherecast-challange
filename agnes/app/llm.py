@@ -232,6 +232,7 @@ Actions:
   (needs two product IDs).
 - "recommend": user wants a sourcing recommendation for a product/ID.
 - "order_fulfillment": user wants to deliver or supply a specific amount of a product.
+- "send_email": user wants to send an email to a supplier, customer, or distributor.
 - "greeting" / "help" / "chat": small talk or open-ended.
 
 For material_query, extract:
@@ -247,6 +248,11 @@ For order_fulfillment, extract:
   material          = the canonical ingredient name requested.
   requested_amount  = the numeric amount the client requested (null if not found).
   available_amount  = the numeric amount we currently have (null if not found).
+
+For send_email, extract:
+  recipient         = email address of the recipient.
+  subject           = subject line for the email.
+  body              = text content of the email.
 
 Also extract product_ids (array of integers mentioned) and mode (strict|creative, default strict).
 
@@ -296,7 +302,8 @@ def chat_with_agnes(message: str, context: Optional[Dict] = None, history: Optio
         "3. DO NOT use phrases like 'feel free to ask for a different data point'.\n"
         "4. Focus entirely on supply chain insights, risks, and recommendations.\n"
         "5. If market price data ('market_price') is present in the context, use it to provide cost insights or compare with current sourcing.\n"
-        "6. If you cannot answer based on context, simply state what is missing without suggesting technical queries.\n\n"
+        "6. If the user asks you to send an email or contact someone, you have the capability to do so. You should confirm the details (recipient, subject, body) and then the system will handle the 'send_email' intent.\n"
+        "7. If you cannot answer based on context, simply state what is missing without suggesting technical queries.\n\n"
         f"Database context:\n{json.dumps(ctx, indent=2)[:4000]}\n\n"
         f"User message: {message}\n"
     )
