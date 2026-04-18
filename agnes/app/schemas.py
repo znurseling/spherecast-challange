@@ -72,3 +72,15 @@ class ChatResponse(BaseModel):
     data: Optional[Dict[str, Any]] = Field(None, description="Structured data payload")
     intent: Optional[str] = Field(None, description="Detected intent")
     llm_enabled: Optional[bool] = Field(None, description="Whether LLM is active")
+
+
+class InventoryItem(BaseModel):
+    sku: str
+    type: str
+    canonical_name: Optional[str]
+    supplier_count: Optional[int]
+
+
+class SupplierInventoryOut(BaseModel):
+    supplier_name: str
+    materials: List[InventoryItem]

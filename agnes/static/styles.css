@@ -117,6 +117,9 @@ body {
 .stat-card .stat-value { font-size: 18px; font-weight: 700; background: linear-gradient(135deg, var(--accent-light), var(--teal)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
 .stat-card .stat-sub { font-size: 10px; color: var(--text-secondary); margin-top: 4px; }
 
+details[open] .chevron { transform: rotate(180deg); }
+.chevron { transition: transform 0.2s ease; }
+
 .sidebar-footer { padding: 16px 20px; border-top: 1px solid var(--border); }
 
 .status-badge {

@@ -154,6 +154,17 @@ def dashboard():
     return DashboardOut(**consolidation.portfolio_summary())
 
 
+from .schemas import SupplierInventoryOut
+from .db import get_supplier_inventory
+
+@app.get("/api/v1/inventory",
+         response_model=List[SupplierInventoryOut],
+         dependencies=[Depends(require_api_key)],
+         tags=["analysis"])
+def inventory():
+    return get_supplier_inventory()
+
+
 # ---------- chat endpoint ----------
 
 @app.post("/api/v1/chat",

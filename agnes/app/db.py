@@ -70,3 +70,42 @@ def schema() -> Dict[str, str]:
 
 def raw_type_matches(v: str) -> bool:
     return str(v).lower().replace("_", "-") in ("raw-material", "rawmaterial")
+
+def get_supplier_inventory() -> List[Dict]:
+    s = schema()
+    q = f"""
+        SELECT 
+            su.{s["su_name"]} AS supplier_name,
+            p.{s["p_sku"]} AS sku,
+            p.{s["p_type"]} AS type,
+            c.supplier_count
+        FROM Supplier su
+        JOIN Supplier_Product sp ON su.{s["su_id"]} = sp.{s["sp_supplier"]}
+        JOIN Product p ON p.{s["p_id"]} = sp.{s["sp_product"]}
+        JOIN (
+            SELECT {s["sp_product"]}, COUNT({s["sp_supplier"]}) as supplier_count
+            FROM Supplier_Product
+            GROUP BY {s["sp_product"]}
+        ) c ON c.{s["sp_product"]} = p.{s["p_id"]}
+        WHERE p.{s["p_type"]} IN ('raw-material', 'rawmaterial')
+        ORDER BY su.{s["su_name"]}, p.{s["p_sku"]}
+    """
+    with connection() as c:
+        rows = c.execute(q).fetchall()
+        
+    inventory_map = {}
+    from .llm import _mock_canonical
+    
+    for r in rows:
+        sup = r["supplier_name"]
+        if sup not in inventory_map:
+            inventory_map[sup] = {"supplier_name": sup, "materials": []}
+            
+        inventory_map[sup]["materials"].append({
+            "sku": r["sku"],
+            "type": r["type"],
+            "canonical_name": _mock_canonical(r["sku"]),
+            "supplier_count": r["supplier_count"]
+        })
+        
+    return list(inventory_map.values())

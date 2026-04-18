@@ -10,6 +10,12 @@ const $btnSpeaker = document.getElementById("btnSpeaker");
 const $audioViz   = document.getElementById("audioVisualizer");
 const $status     = document.getElementById("statusText");
 
+const $chatPanel        = document.getElementById("chatPanel");
+const $inventoryPanel   = document.getElementById("inventoryPanel");
+const $btnAskAgnes      = document.getElementById("btnAskAgnes");
+const $btnViewInventory = document.getElementById("btnViewInventory");
+const $inventoryContainer = document.getElementById("inventoryContainer");
+
 let ttsEnabled = false;
 let isRecording = false;
 let recognition = null;
@@ -34,6 +40,54 @@ async function loadDashboard() {
   } catch {
     $status.textContent = "Offline — start server";
   }
+}
+
+/* ── Inventory Panel ──────────────────────────── */
+async function loadInventory() {
+  $chatPanel.style.display = "none";
+  $inventoryPanel.style.display = "flex";
+  $inventoryContainer.innerHTML = '<div style="color:var(--text-muted);text-align:center;">Loading inventory...</div>';
+  try {
+    const r = await fetch("/api/v1/inventory", { headers: HEADERS });
+    if (!r.ok) throw new Error(r.status);
+    const data = await r.json();
+    
+    let html = '<div style="display:flex;flex-direction:column;gap:12px;">';
+    for (const sup of data) {
+      html += `
+        <details class="supplier-toggle stat-card" style="margin-bottom:0; padding: 0;">
+          <summary style="padding: 16px; cursor: pointer; font-size: 15px; color: var(--text-primary); font-weight: 600; outline: none; list-style: none; display: flex; justify-content: space-between; align-items: center;">
+            ${sup.supplier_name}
+            <div style="display:flex;align-items:center;gap:12px;">
+              <span style="font-size: 11px; font-weight: 500; color: var(--text-muted); background: rgba(255,255,255,0.05); padding: 4px 8px; border-radius: 12px;">${sup.materials.length} Materials</span>
+              <svg class="chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </div>
+          </summary>
+          <div style="padding: 0 16px 16px 16px;">
+          <table class="rich-table" style="width:100%;text-align:left;margin-top:0;">
+            <thead><tr><th>Canonical Name</th><th>Type</th><th>No. of Suppliers</th></tr></thead>
+            <tbody>
+      `;
+      for (const mat of sup.materials) {
+        html += `<tr>
+          <td style="font-weight: 500;">${mat.canonical_name || "—"}</td>
+          <td><span style="background: rgba(0, 184, 255, 0.1); color: var(--accent); padding: 3px 6px; border-radius: 4px; font-size: 11px;">${mat.type}</span></td>
+          <td>${mat.supplier_count || 1}</td>
+        </tr>`;
+      }
+      html += `</tbody></table></div></details>`;
+    }
+    html += '</div>';
+    $inventoryContainer.innerHTML = html;
+  } catch (e) {
+    $inventoryContainer.innerHTML = `<div style="color:var(--red);">Error loading inventory: ${e.message}</div>`;
+  }
+}
+
+function showChat() {
+  $inventoryPanel.style.display = "none";
+  $chatPanel.style.display = "flex";
+  scrollBottom();
 }
 
 /* ── Send message ─────────────────────────────── */
@@ -300,3 +354,6 @@ $btnSpeaker.addEventListener("click", toggleTTS);
 document.querySelectorAll(".quick-btn").forEach(btn => {
   btn.addEventListener("click", () => sendMessage(btn.dataset.msg));
 });
+
+if ($btnAskAgnes) $btnAskAgnes.addEventListener("click", (e) => { e.preventDefault(); showChat(); });
+if ($btnViewInventory) $btnViewInventory.addEventListener("click", (e) => { e.preventDefault(); loadInventory(); });

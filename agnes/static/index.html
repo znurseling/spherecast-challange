@@ -22,8 +22,11 @@
         </div>
       </div>
       <div class="sidebar-stats" id="sidebarStats">
-        <a href="https://example.com/supplier-inventory" target="_blank" class="btn-inventory">
-          📦 View Inventory
+        <a href="#" id="btnAskAgnes" class="btn-inventory">
+          Ask Agnes
+        </a>
+        <a href="#" id="btnViewInventory" class="btn-inventory">
+          View Inventory
         </a>
       </div>
       <div class="sidebar-footer">
@@ -35,7 +38,7 @@
     </aside>
 
     <!-- Main Chat Panel -->
-    <main class="main-panel">
+    <main class="main-panel" id="chatPanel">
       <div class="chat-header">
         <div>
           <h2>Chat with Agnes</h2>
@@ -71,6 +74,19 @@
           </button>
           <button class="btn-icon btn-send" id="btnSend" title="Send">➤</button>
         </div>
+      </div>
+    </main>
+
+    <!-- Inventory Panel -->
+    <main class="main-panel" id="inventoryPanel" style="display: none;">
+      <div class="chat-header">
+        <div>
+          <h2>Supplier Inventory</h2>
+          <div class="subtitle">Current raw materials by supplier</div>
+        </div>
+      </div>
+      <div class="messages-container" style="padding: 24px;" id="inventoryContainer">
+        <!-- Inventory table injected here -->
       </div>
     </main>
   </div>
