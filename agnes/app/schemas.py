@@ -1,0 +1,62 @@
+"""Pydantic models = the API contract the mobile app codes against."""
+from typing import List, Optional, Any, Dict
+from pydantic import BaseModel, Field
+
+
+class HealthOut(BaseModel):
+    status: str
+    llm_enabled: bool
+    db_path: str
+
+
+class Evidence(BaseModel):
+    source: str
+    detail: str
+
+
+class CandidateOut(BaseModel):
+    product_id: int
+    sku: Optional[str]
+    n_companies: int
+    n_suppliers: int
+    n_boms: int
+    fragmentation_score: int
+
+
+class ProductDetailOut(BaseModel):
+    id: int
+    sku: Optional[str]
+    type: Optional[str]
+    canonical_name: Optional[str]
+    canonical_confidence: Optional[float]
+    suppliers: List[Dict[str, Any]]
+    consumed_by_companies: List[Dict[str, Any]]
+    consuming_bom_count: int
+    evidence: List[Evidence]
+
+
+class SubstituteRequest(BaseModel):
+    product_a_id: int = Field(..., description="Currently-used raw material")
+    product_b_id: int = Field(..., description="Proposed substitute")
+    mode: str = Field("strict", pattern="^(strict|creative)$")
+
+
+class SubstituteOut(BaseModel):
+    verdict: str
+    confidence: float
+    reasoning: str
+    mode: str
+    evidence: List[Evidence]
+
+
+class RecommendRequest(BaseModel):
+    product_id: int
+    mode: str = Field("strict", pattern="^(strict|creative)$")
+
+
+class DashboardOut(BaseModel):
+    raw_materials: int
+    current_supplier_relationships: int
+    agnes_consolidated_relationships: int
+    reduction_pct: float
+    fragmented_materials: int
