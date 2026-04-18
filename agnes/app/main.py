@@ -4,9 +4,10 @@ FastAPI application. This is what the mobile app talks to.
 Auth: every request must send `X-API-Key: <AGNES_API_KEY>`.
 Docs: http://localhost:8000/docs
 """
+import sqlite3
 from pathlib import Path
 from typing import List
-from fastapi import FastAPI, Depends, Header, HTTPException, Query
+from fastapi import FastAPI, Depends, Header, HTTPException, Query, UploadFile, File, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -21,6 +22,7 @@ from . import consolidation, recommender
 from .normalizer import normalize
 from .llm import assess_substitution
 from .chat import handle_chat
+from .db import schema
 
 
 # ---------- auth dependency ----------
@@ -165,13 +167,50 @@ def inventory():
     return get_supplier_inventory()
 
 
+@app.post("/api/v1/upload-sql",
+          dependencies=[Depends(require_api_key)],
+          tags=["system"])
+async def upload_sql(request: Request, file: UploadFile = File(...)):
+    """Upload a custom .sql, .sqlite, or .db database file."""
+    ext = Path(file.filename).suffix.lower()
+    if ext not in (".sql", ".sqlite", ".db"):
+        raise HTTPException(400, "Only .sql, .sqlite, or .db files are supported.")
+    
+    content = await file.read()
+    
+    try:
+        if ext == ".sql":
+            # Execute SQL script on the current database
+            sql_text = content.decode("utf-8")
+            conn = sqlite3.connect(DB_PATH)
+            conn.executescript(sql_text)
+            conn.commit()
+            conn.close()
+            schema.cache_clear()
+            request.app.state.uploaded_sql = sql_text
+            msg = f"Successfully executed {file.filename} and updated Agnes' SQLite database!"
+        else:
+            # Overwrite the current SQLite database with the uploaded file
+            with open(DB_PATH, "wb") as f:
+                f.write(content)
+            # Clear previous state as the whole DB changed
+            schema.cache_clear()
+            request.app.state.uploaded_sql = None
+            msg = f"Successfully replaced Agnes' brain with {file.filename}!"
+            
+        return {"message": msg}
+    except Exception as e:
+        raise HTTPException(500, f"Error processing file: {str(e)}")
+
+
 # ---------- chat endpoint ----------
 
 @app.post("/api/v1/chat",
           response_model=ChatResponse,
           dependencies=[Depends(require_api_key)],
           tags=["chat"])
-def chat(req: ChatRequest):
+def chat(request: Request, req: ChatRequest):
     """Natural-language chat interface to all Agnes capabilities."""
-    result = handle_chat(req.message)
+    uploaded_sql = getattr(request.app.state, "uploaded_sql", None)
+    result = handle_chat(req.message, uploaded_sql=uploaded_sql)
     return ChatResponse(**result)

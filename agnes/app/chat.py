@@ -338,9 +338,17 @@ def _material_count_response(message: str) -> Dict:
     }
 
 
-def _unknown_response(message: str) -> Dict:
+def _unknown_response(message: str, context: Dict | None = None) -> Dict:
+    # If we have an uploaded SQL dump in the context, merge it into chat context
+    if context is None:
+        context = _chat_context(message)
     if LLM_ENABLED:
-        text = chat_with_agnes(message, context=_chat_context(message))
+        # Inject uploaded SQL if present in context
+        sql_dump = context.get("uploaded_sql")
+        if sql_dump:
+            # Append the raw SQL dump to the context for the LLM
+            context["uploaded_sql"] = sql_dump
+        text = chat_with_agnes(message, context=context)
         if text:
             return {"type": "text", "message": text}
     
@@ -373,11 +381,21 @@ _HANDLERS = {
 }
 
 
-def handle_chat(message: str) -> Dict:
-    """Process a user chat message and return a structured response."""
+def handle_chat(message: str, uploaded_sql: str | None = None) -> Dict:
+    """Process a user chat message and return a structured response.
+    If an SQL dump was uploaded, its content is passed as `uploaded_sql`.
+    This will be injected into the LLM context for conversational fallback.
+    """
     intent = _detect_intent(message)
     handler = _HANDLERS.get(intent, _unknown_response)
-    response = handler(message)
+    # If the request is unknown and we have uploaded SQL, embed it in the context
+    if intent == "unknown" and uploaded_sql:
+        # Extend the chat context with the raw SQL dump
+        context = _chat_context(message)
+        context["uploaded_sql"] = uploaded_sql
+        response = handler(message, context=context)
+    else:
+        response = handler(message)
     response["intent"] = intent
     response["llm_enabled"] = LLM_ENABLED
     return response
