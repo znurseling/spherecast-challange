@@ -12,8 +12,10 @@ const $status     = document.getElementById("statusText");
 
 const $chatPanel        = document.getElementById("chatPanel");
 const $inventoryPanel   = document.getElementById("inventoryPanel");
+const $inboxPanel       = document.getElementById("inboxPanel");
 const $btnAskAgnes      = document.getElementById("btnAskAgnes");
 const $btnViewInventory = document.getElementById("btnViewInventory");
+const $btnInbox         = document.getElementById("btnInbox");
 const $inventoryContainer = document.getElementById("inventoryContainer");
 
 let ttsEnabled = false;
@@ -24,10 +26,6 @@ let chatHistory = []; // Local memory for the session
 /* ── Init ─────────────────────────────────────── */
 document.addEventListener("DOMContentLoaded", () => {
   loadDashboard();
-  addBotMessage({
-    type: "text",
-    message: "👋 Hello! I'm **Agnes**, your intelligent Supply Chain companion.\n\nI'm here to help you optimize your sourcing and analyze your data. My core capabilities include:\n\n- **Inventory Tracking**: I can help you review the current raw materials provided by your suppliers.\n- **Consolidation Analysis**: I identify highly fragmented materials that are perfect candidates for supplier consolidation.\n- **Substitution Checking**: I can reason about whether one raw material can safely replace another.\n- **Smart Recommendations**: I provide AI-powered advice on how to streamline your sourcing and reduce supplier redundancy.\n\nJust type or click the microphone to ask me anything about your supply chain!"
-  });
   setupSpeechRecognition();
 });
 
@@ -46,6 +44,7 @@ async function loadDashboard() {
 /* ── Inventory Panel ──────────────────────────── */
 async function loadInventory() {
   $chatPanel.style.display = "none";
+  if ($inboxPanel) $inboxPanel.style.display = "none";
   $inventoryPanel.style.display = "flex";
   $inventoryContainer.innerHTML = '<div style="color:var(--text-muted);text-align:center;">Loading inventory...</div>';
   try {
@@ -90,8 +89,15 @@ async function loadInventory() {
 
 function showChat() {
   $inventoryPanel.style.display = "none";
+  if ($inboxPanel) $inboxPanel.style.display = "none";
   $chatPanel.style.display = "flex";
   scrollBottom();
+}
+
+function showInbox() {
+  $inventoryPanel.style.display = "none";
+  $chatPanel.style.display = "none";
+  if ($inboxPanel) $inboxPanel.style.display = "flex";
 }
 
 /* ── Send message ─────────────────────────────── */
@@ -369,3 +375,4 @@ document.querySelectorAll(".quick-btn").forEach(btn => {
 
 if ($btnAskAgnes) $btnAskAgnes.addEventListener("click", (e) => { e.preventDefault(); showChat(); });
 if ($btnViewInventory) $btnViewInventory.addEventListener("click", (e) => { e.preventDefault(); loadInventory(); });
+if ($btnInbox) $btnInbox.addEventListener("click", (e) => { e.preventDefault(); showInbox(); });
