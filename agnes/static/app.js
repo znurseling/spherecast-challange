@@ -16,6 +16,7 @@ const $btnAskAgnes      = document.getElementById("btnAskAgnes");
 const $btnViewInventory = document.getElementById("btnViewInventory");
 const $btnInbox         = document.getElementById("btnInbox");
 const $inventoryContainer = document.getElementById("inventoryContainer");
+const $inboxList          = document.getElementById("inboxList");
 
 let ttsEnabled = false;
 let isRecording = false;
@@ -93,6 +94,28 @@ async function loadInventory() {
   }
 }
 
+/* ── Inbox Panel ─────────────────────────────── */
+async function loadInbox() {
+  $inboxList.innerHTML = '<div style="color:var(--text-muted);text-align:center;margin-top:40px;">Checking your messages...</div>';
+  try {
+    const r = await fetch("/api/v1/chat", {
+      method: "POST",
+      headers: HEADERS,
+      body: JSON.stringify({ message: "check my inbox", history: [] })
+    });
+    if (!r.ok) throw new Error(r.status);
+    const d = await r.json();
+    if (d.data && d.data.inbox_emails) {
+      $inboxList.innerHTML = "";
+      $inboxList.appendChild(renderInbox(d.data.inbox_emails));
+    } else {
+      $inboxList.innerHTML = `<div style="color:var(--text-muted);text-align:center;margin-top:40px;"><p>${d.message}</p></div>`;
+    }
+  } catch (e) {
+    $inboxList.innerHTML = `<div style="color:var(--red);text-align:center;margin-top:40px;">Error loading inbox: ${e.message}</div>`;
+  }
+}
+
 function showChat() {
   $inventoryPanel.style.display = "none";
   if ($inboxPanel) $inboxPanel.style.display = "none";
@@ -103,7 +126,10 @@ function showChat() {
 function showInbox() {
   $inventoryPanel.style.display = "none";
   $chatPanel.style.display = "none";
-  if ($inboxPanel) $inboxPanel.style.display = "flex";
+  if ($inboxPanel) {
+    $inboxPanel.style.display = "flex";
+    loadInbox();
+  }
 }
 
 /* ── Message rendering ────────────────────────── */
@@ -127,6 +153,7 @@ function addBotMessage(data) {
       case "substitution":bubble.appendChild(renderSubstitution(data.data)); break;
       case "recommendation":  bubble.appendChild(renderRecommendation(data.data)); break;
       case "recommendations": bubble.appendChild(renderRecommendations(data.data)); break;
+      case "inbox":       bubble.appendChild(renderInbox(data.data.inbox_emails)); break;
     }
   }
   $messages.appendChild(el);
@@ -238,6 +265,30 @@ function renderRecommendations(d) {
     card.style.cssText = "margin-top:12px;padding-top:12px;border-top:1px solid var(--border)";
     card.innerHTML = `<strong>${i + 1}. ${r.canonical_name || "Product " + r.product_id}</strong>`;
     card.appendChild(renderRecommendation(r));
+    wrap.appendChild(card);
+  });
+  return wrap;
+}
+
+function renderInbox(emails) {
+  const wrap = document.createElement("div");
+  wrap.className = "inbox-list";
+  wrap.style.cssText = "display:flex;flex-direction:column;gap:12px;width:100%;";
+  
+  emails.forEach(e => {
+    const card = document.createElement("div");
+    card.className = "stat-card";
+    card.style.cssText = "margin-bottom:0; cursor:default; animation: slideIn 0.3s ease-out;";
+    card.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;">
+        <div style="font-weight:600;color:var(--accent);font-size:14px;">${e.from}</div>
+        <div style="font-size:11px;color:var(--text-muted);">${new Date(e.date).toLocaleDateString()}</div>
+      </div>
+      <div style="font-weight:600;margin-bottom:6px;font-size:15px;color:var(--text-primary);">${e.subject}</div>
+      <div style="font-size:13px;color:var(--text-secondary);line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">
+        ${e.body}
+      </div>
+    `;
     wrap.appendChild(card);
   });
   return wrap;

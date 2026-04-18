@@ -723,30 +723,6 @@ def _email_response(plan: Dict) -> Dict:
     }
 
 
-def _inbox_response(message: str, history: Optional[List[Dict[str, str]]] = None) -> Dict:
-    emails = fetch_emails(limit=5)
-    if not emails:
-        return {
-            "type": "text",
-            "message": "Your inbox is empty or I couldn't access it right now."
-        }
-    
-    # Let the LLM summarize the inbox
-    context = {"inbox_emails": emails}
-    if LLM_ENABLED:
-        text = chat_with_agnes(f"Summarize these latest emails for the user: {message}", context=context, history=history)
-        return {
-            "type": "text",
-            "message": text,
-            "data": context
-        }
-    
-    # Fallback deterministic summary
-    lines = "\n".join(f"- **{e['subject']}** from {e['from']}" for e in emails)
-    return {
-        "type": "text",
-        "message": f"Here are your latest emails:\n\n{lines}"
-    }
 
 
 def _inbox_response(message: str, history: Optional[List[Dict[str, str]]] = None) -> Dict:
