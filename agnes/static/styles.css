@@ -164,8 +164,10 @@ body {
   width: 36px; height: 36px; border-radius: 10px; flex-shrink: 0;
   display: flex; align-items: center; justify-content: center;
   font-size: 16px;
+  overflow: hidden;
 }
-.message.bot .msg-avatar { background: linear-gradient(135deg, var(--accent), var(--teal)); }
+.msg-avatar img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.message.bot .msg-avatar { background: transparent; }
 .message.user .msg-avatar { background: var(--surface); }
 
 .msg-bubble {
