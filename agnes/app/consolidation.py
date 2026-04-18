@@ -111,6 +111,65 @@ def product_detail(product_id: int) -> Dict:
     }
 
 
+def search_by_material(keyword: str) -> Dict:
+    """Find raw-material products whose SKU contains `keyword`.
+    Returns counts plus the suppliers offering them."""
+    d = load_all()
+    s, prods = d["s"], d["products"]
+    kw = keyword.lower().strip()
+    if not kw:
+        return {"keyword": keyword, "count": 0, "products": [], "suppliers": []}
+
+    matches = []
+    for pid, p in prods.items():
+        sku = (p.get(s["p_sku"]) or "")
+        if not raw_type_matches(p.get(s["p_type"])):
+            continue
+        if kw in sku.lower():
+            matches.append({"id": pid, "sku": sku})
+
+    match_ids = {m["id"] for m in matches}
+
+    supplier_names = {}
+    supplier_to_products = defaultdict(list)
+    for sp in d["sps"]:
+        if sp[s["sp_product"]] in match_ids:
+            sup = d["suppliers"].get(sp[s["sp_supplier"]])
+            if sup:
+                sid = sup[s["su_id"]]
+                supplier_names[sid] = sup[s["su_name"]]
+                supplier_to_products[sid].append(sp[s["sp_product"]])
+
+    bom_company = {}
+    for bom in d["boms"]:
+        produced = prods.get(bom[s["bom_produced"]])
+        if produced:
+            bom_company[bom[s["bom_id"]]] = produced[s["p_company"]]
+
+    company_ids = set()
+    for bc in d["bcs"]:
+        if bc[s["bc_consumed"]] in match_ids:
+            cid = bom_company.get(bc[s["bc_bom"]])
+            if cid is not None:
+                company_ids.add(cid)
+
+    companies = [{"id": cid, "name": d["companies"][cid][s["co_name"]]}
+                 for cid in company_ids if cid in d["companies"]]
+
+    suppliers = [{"id": sid, "name": name,
+                  "product_count": len(set(supplier_to_products[sid]))}
+                 for sid, name in supplier_names.items()]
+    suppliers.sort(key=lambda r: r["product_count"], reverse=True)
+
+    return {
+        "keyword": keyword,
+        "count": len(matches),
+        "products": matches,
+        "suppliers": suppliers,
+        "companies": companies,
+    }
+
+
 def portfolio_summary() -> Dict:
     """Numbers for the 'current state vs Agnes state' dashboard."""
     cands = consolidation_candidates(limit=10_000)

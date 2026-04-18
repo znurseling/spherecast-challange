@@ -18,6 +18,8 @@ from .config import LLM_ENABLED
 _INTENTS = [
     # (pattern, intent_name, description)
     # ORDER MATTERS — more specific intents first
+    (r"\bhow\s+(many|much)\b|\b(count|inventory|stock)\s+of\b|\bdo\s+we\s+have\b",
+     "material_count", "Count raw materials by name"),
     (r"\b(dashboard|overview|summary|portfolio|stats|status)\b", "dashboard",
      "Show portfolio dashboard"),
     (r"\b(candidates?|consolidat|fragment|opportunit)\b", "candidates",
@@ -279,6 +281,63 @@ def _recommend_response(message: str) -> Dict:
     }
 
 
+_STOPWORDS = {
+    "how", "many", "much", "do", "we", "have", "of", "the", "a", "an",
+    "is", "are", "there", "any", "count", "inventory", "stock", "got",
+    "our", "in", "does", "has", "had", "can", "you", "tell", "me", "show",
+    "please", "for", "product", "products", "material", "materials", "raw",
+}
+
+
+def _extract_keyword(message: str) -> str:
+    tokens = re.findall(r"[A-Za-z][A-Za-z\-]+", message.lower())
+    kept = [t for t in tokens if t not in _STOPWORDS and len(t) > 1]
+    return " ".join(kept).strip()
+
+
+def _material_count_response(message: str) -> Dict:
+    keyword = _extract_keyword(message)
+    if not keyword:
+        return {
+            "type": "text",
+            "message": "Which material? Try *\"how many zinc do we have?\"*",
+        }
+    # Try full phrase, then individual tokens — pick the one with most hits
+    best = consolidation.search_by_material(keyword)
+    if best["count"] == 0 and " " in keyword:
+        for tok in keyword.split():
+            r = consolidation.search_by_material(tok)
+            if r["count"] > best["count"]:
+                best = r
+                keyword = tok
+
+    if best["count"] == 0:
+        return {
+            "type": "text",
+            "message": f"❌ No raw materials matching **{keyword}** found.",
+        }
+
+    suppliers = best["suppliers"]
+    sup_lines = "\n".join(
+        f"- **{s['name']}** — supplies {s['product_count']} variant"
+        f"{'s' if s['product_count'] != 1 else ''}"
+        for s in suppliers[:10]
+    ) or "_(no suppliers linked)_"
+
+    more = f"\n…and {len(suppliers) - 10} more suppliers" if len(suppliers) > 10 else ""
+
+    return {
+        "type": "text",
+        "message": (
+            f"📦 We have **{best['count']}** raw-material "
+            f"variant{'s' if best['count'] != 1 else ''} matching "
+            f"**{keyword}**, used across **{len(best['companies'])}** "
+            f"compan{'ies' if len(best['companies']) != 1 else 'y'}.\n\n"
+            f"**Suppliers ({len(suppliers)}):**\n{sup_lines}{more}"
+        ),
+    }
+
+
 def _unknown_response(message: str) -> Dict:
     if LLM_ENABLED:
         text = chat_with_agnes(message, context=_chat_context(message))
@@ -305,6 +364,7 @@ _HANDLERS = {
     "greeting":       lambda msg: _greeting_response(),
     "help":           lambda msg: _help_response(),
     "dashboard":      lambda msg: _dashboard_response(),
+    "material_count": _material_count_response,
     "candidates":     _candidates_response,
     "product_detail": _product_response,
     "substitute":     _substitute_response,
