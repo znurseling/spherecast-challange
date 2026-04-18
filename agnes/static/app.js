@@ -30,11 +30,6 @@ async function loadDashboard() {
     const r = await fetch("/api/v1/dashboard", { headers: HEADERS });
     if (!r.ok) throw new Error(r.status);
     const d = await r.json();
-    document.getElementById("statRawMaterials").textContent    = d.raw_materials;
-    document.getElementById("statCurrentSuppliers").textContent = d.current_supplier_relationships;
-    document.getElementById("statAgnesTarget").textContent      = d.agnes_consolidated_relationships;
-    document.getElementById("statReduction").textContent        = d.reduction_pct + "%";
-    document.getElementById("statFragmented").textContent       = d.fragmented_materials;
     $status.textContent = "Agnes Online";
   } catch {
     $status.textContent = "Offline — start server";
@@ -261,10 +256,37 @@ function toggleTTS() {
 function speak(text) {
   if (!window.speechSynthesis) return;
   window.speechSynthesis.cancel();
-  const clean = text.replace(/\*\*?/g, "").replace(/[#|`\-]/g, "").replace(/<[^>]+>/g, "");
+
+  // Clean markdown and HTML for speech
+  const clean = text.replace(/\*\*?/g, "").replace(/[#|`\-]/g, "").replace(/<[^>]+>/g, "").trim();
+  if (!clean) return;
+
   const utt = new SpeechSynthesisUtterance(clean);
-  utt.rate = 1.05; utt.pitch = 1;
+  
+  // Find a more "humanly" voice
+  const voices = window.speechSynthesis.getVoices();
+  const enVoices = voices.filter(v => v.lang.startsWith("en"));
+  
+  // Prioritization: Google Neural > Google > Samantha (Mac) > Enhanced > First English
+  const preferred = enVoices.find(v => v.name.toLowerCase().includes("neural"))
+                 || enVoices.find(v => v.name.toLowerCase().includes("google"))
+                 || enVoices.find(v => v.name.toLowerCase().includes("samantha"))
+                 || enVoices.find(v => v.name.toLowerCase().includes("enhanced"))
+                 || enVoices[0];
+
+  if (preferred) {
+    utt.voice = preferred;
+    console.log("Agnes voice selected:", preferred.name);
+  }
+
+  utt.rate = 1.0;  // Natural speed
+  utt.pitch = 1.0; // Natural pitch
   window.speechSynthesis.speak(utt);
+}
+
+// Ensure voices are loaded (some browsers populate this async)
+if (window.speechSynthesis) {
+  window.speechSynthesis.onvoiceschanged = () => window.speechSynthesis.getVoices();
 }
 
 /* ── Event listeners ──────────────────────────── */
