@@ -182,27 +182,25 @@ Do not invent certifications or specs you cannot ground in the provided data."""
             "reasoning": mock_reason, "evidence": evidence, "mode": mode,
         }
 
-def understand_message(message: str) -> Optional[Dict]:
-    """Ask the LLM to parse a user message into a structured action plan.
-    Returns None when the LLM is unavailable — callers fall back to regex.
+def _parse_history(history: Optional[List[Dict[str, str]]] = None) -> List[Dict]:
+    """Convert Agnes history format to Gemini history format."""
+    if not history:
+        return []
+    gemini_history = []
+    for msg in history:
+        role = "user" if msg.get("role") == "user" else "model"
+        gemini_history.append({"role": role, "parts": [msg.get("content", "")]})
+    return gemini_history
 
-    Expected JSON shape:
-      {
-        "action": "material_query"|"dashboard"|"candidates"|
-                  "product_detail"|"substitute"|"recommend"|
-                  "greeting"|"help"|"chat",
-        "material": "<canonical ingredient name or null>",
-        "product_ids": [<int>, ...],
-        "wants_count": bool,          # "how much / how many"
-        "wants_suppliers": bool,      # "which supplier / where to buy"
-        "wants_companies": bool,      # "which company / who uses it"
-        "wants_substitutes": bool,    # "alternatives / substitutes / swap"
-        "wants_efficient": bool,      # "most efficient / best / cheapest"
-        "mode": "strict"|"creative"
-      }
-    """
+
+def understand_message(message: str, history: Optional[List[Dict[str, str]]] = None) -> Optional[Dict]:
+    """Ask the LLM to parse a user message into a structured action plan.
+    Uses chat history for context-aware intent detection."""
     if not _model:
         return None
+
+    gemini_history = _parse_history(history)
+    chat = _model.start_chat(history=gemini_history)
 
     prompt = f"""You are the intent router for Agnes, an AI supply-chain assistant.
 Parse the user message into a JSON action plan. Pick the single best action.
@@ -220,19 +218,14 @@ Actions:
 
 For material_query, extract:
   material          = the canonical ingredient name the user is asking about,
-                      lowercase, singular. Normalize spellings (e.g. "vitamin C"
-                      → "vitamin c", "VitC" → "vitamin c", "ascorbic-acid" →
-                      "ascorbic acid"). Null if no material mentioned.
+                      lowercase, singular. Normalize spellings. Null if no material mentioned.
   wants_count       = true if they asked quantity / how many / how much / stock.
   wants_suppliers   = true if they asked which supplier / where to buy / who offers.
   wants_companies   = true if they asked which company consumes / buys / uses it.
-  wants_substitutes = true if they asked for alternatives / substitutes / swap /
-                      "can X replace Y" or implied efficiency via substitution.
-  wants_efficient   = true if they asked for "most efficient" / "best" /
-                      "single supplier" / cheapest / optimal sourcing.
+  wants_substitutes = true if they asked for alternatives / substitutes / swap.
+  wants_efficient   = true if they asked for "most efficient" / "best" / "single supplier".
 
-Also extract product_ids (array of integers mentioned) and mode (strict|creative,
-default strict).
+Also extract product_ids (array of integers mentioned) and mode (strict|creative, default strict).
 
 Respond with ONLY the JSON object — no prose, no code fences.
 
@@ -240,7 +233,7 @@ User message: {message}
 """
 
     try:
-        resp = _model.generate_content(prompt)
+        resp = chat.send_message(prompt)
         text = resp.text.strip()
         text = re.sub(r"^```(?:json)?|```$", "", text, flags=re.MULTILINE).strip()
         data = json.loads(text)
@@ -256,12 +249,16 @@ User message: {message}
         return None
 
 
-def chat_with_agnes(message: str, context: Optional[Dict] = None) -> str:
-    """Fallback conversational chat with optional DB-backed context."""
+def chat_with_agnes(message: str, context: Optional[Dict] = None, history: Optional[List[Dict[str, str]]] = None) -> str:
+    """Fallback conversational chat with optional DB-backed context and full history."""
     if not _model:
         print("LLM Chat: No model initialized.")
         return ""
+    
     ctx = context or {}
+    gemini_history = _parse_history(history)
+    chat = _model.start_chat(history=gemini_history)
+
     prompt = (
         "You are Agnes, a highly intelligent AI Supply Chain Manager.\n"
         "You are embedded in an application that can access its SQLite procurement "
@@ -270,12 +267,12 @@ def chat_with_agnes(message: str, context: Optional[Dict] = None) -> str:
         "Do not say you cannot access the database if context is present.\n"
         "If the answer is not supported by the provided context, say what is missing "
         "and suggest a supported query.\n\n"
-        f"User message: {message}\n\n"
         f"Database context:\n{json.dumps(ctx, indent=2)[:4000]}\n\n"
+        f"User message: {message}\n"
         "Reply conversationally and ground claims in the provided context."
     )
     try:
-        resp = _model.generate_content(prompt)
+        resp = chat.send_message(prompt)
         return resp.text.strip()
     except Exception as e:
         print(f"LLM Chat Runtime Error: {e}")

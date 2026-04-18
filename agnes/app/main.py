@@ -174,5 +174,5 @@ def inventory():
           tags=["chat"])
 def chat(req: ChatRequest):
     """Natural-language chat interface to all Agnes capabilities."""
-    result = handle_chat(req.message)
+    result = handle_chat(req.message, history=req.history)
     return ChatResponse(**result)

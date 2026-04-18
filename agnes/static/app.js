@@ -19,6 +19,7 @@ const $inventoryContainer = document.getElementById("inventoryContainer");
 let ttsEnabled = false;
 let isRecording = false;
 let recognition = null;
+let chatHistory = []; // Local memory for the session
 
 /* ── Init ─────────────────────────────────────── */
 document.addEventListener("DOMContentLoaded", () => {
@@ -93,19 +94,27 @@ function showChat() {
 /* ── Send message ─────────────────────────────── */
 async function sendMessage(text) {
   if (!text.trim()) return;
+  
+  const currentHistory = [...chatHistory]; // Clone current state
   addUserMessage(text);
+  chatHistory.push({ role: "user", content: text });
+  
   $input.value = "";
   const typingEl = showTyping();
 
   try {
     const r = await fetch("/api/v1/chat", {
       method: "POST", headers: HEADERS,
-      body: JSON.stringify({ message: text }),
+      body: JSON.stringify({ message: text, history: currentHistory }),
     });
     removeTyping(typingEl);
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const data = await r.json();
     addBotMessage(data);
+    
+    // Store Agnes' response in history for next turn
+    chatHistory.push({ role: "bot", content: data.message });
+    
     if (ttsEnabled) speak(data.message);
     if (data.intent === "dashboard") loadDashboard();
   } catch (e) {

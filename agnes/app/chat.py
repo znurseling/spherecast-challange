@@ -6,7 +6,7 @@ calls the appropriate internal function, and returns a structured
 response the frontend renders as rich cards, tables, or plain text.
 """
 import re
-from typing import Dict, List, Any
+from typing import Dict, List, Optional, Any
 from . import consolidation, recommender
 from .normalizer import normalize
 from .llm import assess_substitution, chat_with_agnes, understand_message
@@ -479,9 +479,9 @@ def _material_count_response(message: str) -> Dict:
         ),
     }
 
-def _unknown_response(message: str) -> Dict:
+def _unknown_response(message: str, history: Optional[List[Dict[str, str]]] = None) -> Dict:
     if LLM_ENABLED:
-        text = chat_with_agnes(message, context=_chat_context(message))
+        text = chat_with_agnes(message, context=_chat_context(message), history=history)
         if text:
             return {"type": "text", "message": text}
 
@@ -600,13 +600,13 @@ def _material_evidence_fallback(material: str, res: Dict,
     }
 
 
-def _llm_chat_response(message: str, plan: Dict) -> Dict:
+def _llm_chat_response(message: str, plan: Dict, history: Optional[List[Dict[str, str]]] = None) -> Dict:
     """Open-ended question routed to the LLM with the standard DB context."""
     if LLM_ENABLED:
-        text = chat_with_agnes(message, context=_chat_context(message))
+        text = chat_with_agnes(message, context=_chat_context(message), history=history)
         if text:
             return {"type": "text", "message": text}
-    return _unknown_response(message)
+    return _unknown_response(message, history=history)
 
 
 # ── Main chat handler ──────────────────────────────────────────────
@@ -637,7 +637,7 @@ _ACTION_TO_INTENT = {
 }
 
 
-def _dispatch_plan(message: str, plan: Dict) -> Dict:
+def _dispatch_plan(message: str, plan: Dict, history: Optional[List[Dict[str, str]]] = None) -> Dict:
     """Run the handler that matches the LLM's action plan."""
     action = plan.get("action", "chat")
 
@@ -668,26 +668,30 @@ def _dispatch_plan(message: str, plan: Dict) -> Dict:
         return _greeting_response()
     if action == "help":
         return _help_response()
-    return _llm_chat_response(message, plan)
+    return _llm_chat_response(message, plan, history=history)
 
 
-def handle_chat(message: str) -> Dict:
+def handle_chat(message: str, history: Optional[List[Dict[str, str]]] = None) -> Dict:
     """Process a user chat message and return a structured response.
 
     When the LLM is available it acts as the intent + entity extractor —
     no regex/stopword guessing. Regex remains as an offline fallback.
     """
-    plan = understand_message(message) if LLM_ENABLED else None
+    plan = understand_message(message, history=history) if LLM_ENABLED else None
 
     if plan:
-        response = _dispatch_plan(message, plan)
+        response = _dispatch_plan(message, plan, history=history)
         response["intent"] = _ACTION_TO_INTENT.get(plan.get("action", "chat"),
                                                    "unknown")
         response["plan"] = plan
     else:
         intent = _detect_intent(message)
         handler = _HANDLERS.get(intent, _unknown_response)
-        response = handler(message)
+        
+        if handler == _unknown_response:
+            response = _unknown_response(message, history=history)
+        else:
+            response = handler(message)
         
         response["intent"] = intent
 

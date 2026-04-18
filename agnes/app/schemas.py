@@ -64,6 +64,7 @@ class DashboardOut(BaseModel):
 
 class ChatRequest(BaseModel):
     message: str = Field(..., description="User chat message")
+    history: Optional[List[Dict[str, str]]] = Field(default=[], description="Previous chat history")
 
 
 class ChatResponse(BaseModel):
