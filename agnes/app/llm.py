@@ -20,7 +20,8 @@ try:
         _model = genai.GenerativeModel(LLM_MODEL)
     else:
         _model = None
-except Exception:
+except Exception as e:
+    print(f"LLM Initialization Error: {e}")
     _model = None
 
 
@@ -258,6 +259,7 @@ User message: {message}
 def chat_with_agnes(message: str, context: Optional[Dict] = None) -> str:
     """Fallback conversational chat with optional DB-backed context."""
     if not _model:
+        print("LLM Chat: No model initialized.")
         return ""
     ctx = context or {}
     prompt = (
@@ -276,5 +278,5 @@ def chat_with_agnes(message: str, context: Optional[Dict] = None) -> str:
         resp = _model.generate_content(prompt)
         return resp.text.strip()
     except Exception as e:
-        print(f"LLM Error: {e}")
+        print(f"LLM Chat Runtime Error: {e}")
         return ""

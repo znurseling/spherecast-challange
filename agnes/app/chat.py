@@ -1,5 +1,3 @@
-
-
 """
 Chat endpoint — natural-language interface to every Agnes capability.
 
@@ -481,9 +479,18 @@ def _material_count_response(message: str) -> Dict:
         ),
     }
 
-def _unknown_response(message: str) -> Dict:
+def _unknown_response(message: str, context: Dict | None = None) -> Dict:
+    if context is None:
+        context = _chat_context(message)
+
     if LLM_ENABLED:
-        text = chat_with_agnes(message, context=_chat_context(message))
+        # Inject uploaded SQL if present in context
+        sql_dump = context.get("uploaded_sql")
+        if sql_dump:
+            # Ensure the raw SQL is clearly visible to the LLM
+            context["uploaded_sql"] = sql_dump
+            
+        text = chat_with_agnes(message, context=context)
         if text:
             return {"type": "text", "message": text}
 
@@ -673,14 +680,17 @@ def _dispatch_plan(message: str, plan: Dict) -> Dict:
     return _llm_chat_response(message, plan)
 
 
-def handle_chat(message: str) -> Dict:
+def handle_chat(message: str, uploaded_sql: str | None = None) -> Dict:
     """Process a user chat message and return a structured response.
 
     When the LLM is available it acts as the intent + entity extractor —
-    no regex/stopword guessing. Regex remains as an offline fallback."""
+    no regex/stopword guessing. Regex remains as an offline fallback.
+    """
     plan = understand_message(message) if LLM_ENABLED else None
 
     if plan:
+        # If the LLM has a plan but we have uploaded SQL, we might want to 
+        # let the LLM see the SQL if it's struggling with the plan.
         response = _dispatch_plan(message, plan)
         response["intent"] = _ACTION_TO_INTENT.get(plan.get("action", "chat"),
                                                    "unknown")
@@ -688,7 +698,15 @@ def handle_chat(message: str) -> Dict:
     else:
         intent = _detect_intent(message)
         handler = _HANDLERS.get(intent, _unknown_response)
-        response = handler(message)
+        
+        # If it's an unknown intent and we have SQL, pass it in the context
+        if intent == "unknown" and uploaded_sql:
+            context = _chat_context(message)
+            context["uploaded_sql"] = uploaded_sql
+            response = _unknown_response(message, context=context)
+        else:
+            response = handler(message)
+        
         response["intent"] = intent
 
     response["llm_enabled"] = LLM_ENABLED
