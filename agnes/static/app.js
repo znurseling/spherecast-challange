@@ -25,7 +25,7 @@ document.addEventListener("DOMContentLoaded", () => {
   loadDashboard();
   addBotMessage({
     type: "text",
-    message: "👋 Hello! I'm **Agnes**, your AI Supply Chain Manager.\n\nI can help you with:\n- 📊 **Dashboard** — portfolio overview\n- 🔍 **Candidates** — fragmented raw materials\n- 📦 **Product details** — by ID\n- 🔄 **Substitution checks** — can B replace A?\n- 💡 **Recommendations** — consolidated sourcing\n\nTry the quick actions below or just ask me anything!"
+    message: "👋 Hello! I'm **Agnes**, your intelligent Supply Chain companion.\n\nI'm here to help you optimize your sourcing and analyze your data. My core capabilities include:\n\n- **Inventory Tracking**: I can help you review the current raw materials provided by your suppliers.\n- **Consolidation Analysis**: I identify highly fragmented materials that are perfect candidates for supplier consolidation.\n- **Substitution Checking**: I can reason about whether one raw material can safely replace another.\n- **Smart Recommendations**: I provide AI-powered advice on how to streamline your sourcing and reduce supplier redundancy.\n\nJust type or click the microphone to ask me anything about your supply chain!"
   });
   setupSpeechRecognition();
 });
@@ -350,10 +350,6 @@ $btnSend.addEventListener("click", () => sendMessage($input.value));
 $input.addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage($input.value); } });
 $btnMic.addEventListener("click", toggleRecording);
 $btnSpeaker.addEventListener("click", toggleTTS);
-
-document.querySelectorAll(".quick-btn").forEach(btn => {
-  btn.addEventListener("click", () => sendMessage(btn.dataset.msg));
-});
 
 if ($btnAskAgnes) $btnAskAgnes.addEventListener("click", (e) => { e.preventDefault(); showChat(); });
 if ($btnViewInventory) $btnViewInventory.addEventListener("click", (e) => { e.preventDefault(); loadInventory(); });
