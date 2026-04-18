@@ -233,6 +233,7 @@ Actions:
 - "recommend": user wants a sourcing recommendation for a product/ID.
 - "order_fulfillment": user wants to deliver or supply a specific amount of a product.
 - "send_email": user wants to send an email to a supplier, customer, or distributor.
+- "check_inbox": user wants to check their latest emails or see if a supplier has replied.
 - "greeting" / "help" / "chat": small talk or open-ended.
 
 For material_query, extract:
