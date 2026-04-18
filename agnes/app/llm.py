@@ -251,7 +251,7 @@ For order_fulfillment, extract:
   available_amount  = the numeric amount we currently have (null if not found).
 
 For send_email, extract:
-  recipient         = email address of the recipient.
+  recipient         = email address of the recipient. DEFAULT to suppliercompany260@gmail.com if it's for a supplier.
   subject           = subject line for the email.
   body              = text content of the email.
 
@@ -303,7 +303,8 @@ def chat_with_agnes(message: str, context: Optional[Dict] = None, history: Optio
         "3. DO NOT use phrases like 'feel free to ask for a different data point'.\n"
         "4. Focus entirely on supply chain insights, risks, and recommendations.\n"
         "5. If market price data ('market_price') is present in the context, use it to provide cost insights or compare with current sourcing.\n"
-        "6. If the user asks you to send an email or contact someone, you have the capability to do so. You should confirm the details (recipient, subject, body) and then the system will handle the 'send_email' intent.\n"
+        "6. IMPORTANT: All suppliers share the same contact email: suppliercompany260@gmail.com. If the user asks to email a supplier, use this address.\n"
+        "7. If the user asks you to send an email or contact someone, you have the capability to do so. You should confirm the details (recipient, subject, body) and then the system will handle the 'send_email' intent.\n"
         "7. If you cannot answer based on context, simply state what is missing without suggesting technical queries.\n\n"
         f"Database context:\n{json.dumps(ctx, indent=2)[:4000]}\n\n"
         f"User message: {message}\n"
