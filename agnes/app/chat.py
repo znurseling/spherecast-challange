@@ -1,3 +1,6 @@
+chat.py 
+
+
 """
 Chat endpoint — natural-language interface to every Agnes capability.
 
@@ -481,12 +484,7 @@ def _material_count_response(message: str) -> Dict:
 
 def _unknown_response(message: str) -> Dict:
     if LLM_ENABLED:
-        # Inject uploaded SQL if present in context
-        sql_dump = context.get("uploaded_sql")
-        if sql_dump:
-            # Append the raw SQL dump to the context for the LLM
-            context["uploaded_sql"] = sql_dump
-        text = chat_with_agnes(message, context=context)
+        text = chat_with_agnes(message, context=_chat_context(message))
         if text:
             return {"type": "text", "message": text}
 
@@ -696,3 +694,4 @@ def handle_chat(message: str) -> Dict:
 
     response["llm_enabled"] = LLM_ENABLED
     return response
+
