@@ -10,7 +10,7 @@ import json
 from typing import Dict, List, Optional, Any
 from . import consolidation, recommender
 from .normalizer import normalize
-from .llm import assess_substitution
+from .llm import assess_substitution, chat_with_agnes
 from .config import LLM_ENABLED
 
 
@@ -242,6 +242,11 @@ def _recommend_response(message: str) -> Dict:
 
 
 def _unknown_response(message: str) -> Dict:
+    if LLM_ENABLED:
+        text = chat_with_agnes(message)
+        if text:
+            return {"type": "text", "message": text}
+    
     return {
         "type": "text",
         "message": (

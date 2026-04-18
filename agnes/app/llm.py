@@ -180,3 +180,18 @@ Do not invent certifications or specs you cannot ground in the provided data."""
             "verdict": mock_verdict, "confidence": mock_conf,
             "reasoning": mock_reason, "evidence": evidence, "mode": mode,
         }
+
+def chat_with_agnes(message: str) -> str:
+    """Fallback conversational chat when no structured intent matches."""
+    if not _model:
+        return ""
+    prompt = (
+        "You are Agnes, a highly intelligent AI Supply Chain Manager. "
+        "A user just said: " + message + "\n\n"
+        "Reply conversationally and concisely."
+    )
+    try:
+        resp = _model.generate_content(prompt)
+        return resp.text.strip()
+    except Exception:
+        return ""
