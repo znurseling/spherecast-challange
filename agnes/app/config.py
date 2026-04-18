@@ -14,7 +14,7 @@ API_KEY = os.getenv("AGNES_API_KEY", "devkey")
 # Google Gemini LLM config. If no key set, the LLM layer returns
 # deterministic mock responses so the system still runs end-to-end.
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "")
-LLM_MODEL = os.getenv("AGNES_MODEL", "gemini-2.0-flash-lite")
+LLM_MODEL = os.getenv("AGNES_MODEL", "gemini-1.5-flash")
 LLM_ENABLED = bool(GOOGLE_API_KEY)
 
 # How aggressive to be when suggesting substitutes
