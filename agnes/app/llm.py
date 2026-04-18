@@ -264,12 +264,15 @@ def chat_with_agnes(message: str, context: Optional[Dict] = None, history: Optio
         "You are embedded in an application that can access its SQLite procurement "
         "database through the backend.\n"
         "Use the provided database context when answering.\n"
-        "Do not say you cannot access the database if context is present.\n"
-        "If the answer is not supported by the provided context, say what is missing "
-        "and suggest a supported query.\n\n"
+        "Reply conversationally and ground claims in the provided context.\n\n"
+        "CRITICAL RULES:\n"
+        "1. DO NOT suggest raw SQL queries to the user.\n"
+        "2. DO NOT give technical advice about data points or database structure.\n"
+        "3. DO NOT use phrases like 'feel free to ask for a different data point'.\n"
+        "4. Focus entirely on supply chain insights, risks, and recommendations.\n"
+        "5. If you cannot answer based on context, simply state what is missing without suggesting technical queries.\n\n"
         f"Database context:\n{json.dumps(ctx, indent=2)[:4000]}\n\n"
         f"User message: {message}\n"
-        "Reply conversationally and ground claims in the provided context."
     )
     try:
         resp = chat.send_message(prompt)
