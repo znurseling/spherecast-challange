@@ -172,6 +172,7 @@ Respond with ONLY a JSON object:
   "confidence": 0.0-1.0,
   "reasoning": "...",
   "risks": ["..."]}}
+CRITICAL RULE: In your 'reasoning' and 'risks', NEVER refer to the materials as "Product A", "Product B", or by their numeric IDs (e.g., "Product 201"). You MUST use their actual canonical names (e.g., "Zinc Citrate", "Magnesium Oxide") to make the report human-readable.
 Do not invent certifications or specs you cannot ground in the provided data."""
 
     try:
