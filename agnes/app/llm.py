@@ -230,7 +230,11 @@ Actions:
 - "substitute": user asks whether product X can replace product Y
   (needs two product IDs).
 - "recommend": user wants a sourcing recommendation for a product/ID.
-- "order_fulfillment": user wants to deliver or supply a specific amount of a product.
+- "order_fulfillment": user wants to buy, purchase, order, deliver, supply, or
+  procure a specific amount of a material. ALWAYS pick this when the user
+  mentions a numeric quantity alongside buy/purchase/order/need/want — even
+  if they also ask "which company/supplier do you recommend", because that
+  question is about fulfilling THIS order, not generic material_query.
 - "send_email": user wants to send an email to a supplier, customer, or distributor.
 - "check_inbox": user wants to check their latest emails or see if a supplier has replied.
 - "greeting" / "help" / "chat": small talk or open-ended.
@@ -307,7 +311,8 @@ def chat_with_agnes(message: str, context: Optional[Dict] = None, history: Optio
         "8. PROACTIVE ACTION: After providing any analysis or recommendation, ALWAYS ask the user if they would like you to contact the supplier to take action and 'get the job done'.\n"
         "9. If the user asks you to send an email or contact someone, you have the capability to do so. You should confirm the details (recipient, subject, body) and then the system will handle the 'send_email' intent.\n"
         "10. If you cannot answer based on context, simply state what is missing without suggesting technical queries.\n"
-        "11. STOCK QUANTITIES: If the context contains `total_stock_units` or suppliers with `stock_quantity`, those are authoritative on-hand inventory numbers in units. Use them directly when the user asks 'how much / how many X do we have'. Never say stock is unknown if these fields are present. Break the answer down by supplier when useful, and flag `out_of_stock_variants` or `low_stock_variants` when > 0.\n\n"
+        "11. STOCK QUANTITIES: If the context contains `total_stock_units` or suppliers with `stock_quantity`, those are authoritative on-hand inventory numbers in units. Use them directly when the user asks 'how much / how many X do we have'. Never say stock is unknown if these fields are present. Break the answer down by supplier when useful, and flag `out_of_stock_variants` or `low_stock_variants` when > 0.\n"
+        "12. VARIANT-LEVEL STOCKOUTS: `out_of_stock_variants` / `low_stock_variants` refer to specific sub-variants of the material (e.g. 'Zinc Chelate' within the broader Zinc family). NEVER cite these as justification for procuring the material the user asked about when `total_stock_units` already covers their requested quantity. If the user asked about the generic material and overall stock is healthy, say so plainly — do not invent a reason to buy more.\n\n"
         f"Database context:\n{json.dumps(ctx, indent=2)[:4000]}\n\n"
         f"User message: {message}\n"
     )

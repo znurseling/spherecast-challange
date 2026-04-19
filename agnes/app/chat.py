@@ -547,13 +547,26 @@ def _material_query_from_plan(message: str, plan: Dict) -> Dict:
     res = consolidation.search_by_material(material)
     subs = consolidation.find_substitutes(material)
 
+    # Identify which specific sub-variants are out/low so the LLM doesn't
+    # treat a single variant stockout as a reason to procure the whole family.
+    out_variant_names = [
+        g["canonical_name"] for g in res.get("groups", [])
+        if g.get("stock_quantity", 0) <= 0
+    ]
+    low_variant_names = [
+        g["canonical_name"] for g in res.get("groups", [])
+        if 0 < g.get("stock_quantity", 0) <= 200
+    ]
+
     # Build compact, LLM-friendly evidence blob.
     evidence = {
         "material_asked": material,
         "variant_count": res["count"],
         "total_stock_units": res.get("total_stock", 0),
         "out_of_stock_variants": res.get("out_of_stock_variants", 0),
+        "out_of_stock_variant_names": out_variant_names,
         "low_stock_variants": res.get("low_stock_variants", 0),
+        "low_stock_variant_names": low_variant_names,
         "suppliers": [
             {"name": s["name"], "variant_count": s["product_count"],
              "stock_quantity": s.get("stock_quantity", 0)}
@@ -667,16 +680,17 @@ def _order_fulfillment_from_plan(message: str, plan: Dict) -> Dict:
     if not material or req is None:
         return _llm_chat_response(message, plan)
 
-    # If the planner didn't supply our on-hand amount, pull the real number
-    # from the DB so we don't treat the entire order as a deficit.
-    db_total = None
+    # Always pull the DB snapshot — we need it for both the on-hand total
+    # and the supplier ranking regardless of whether the planner filled
+    # available_amount in.
+    try:
+        res = consolidation.search_by_material(material)
+    except Exception:
+        res = {"total_stock": 0, "suppliers": []}
+
+    db_total = res.get("total_stock", 0)
     if avail is None:
-        try:
-            res = consolidation.search_by_material(material)
-            db_total = res.get("total_stock", 0)
-            avail = db_total
-        except Exception:
-            avail = 0
+        avail = db_total
 
     try:
         req = float(req)
@@ -691,14 +705,58 @@ def _order_fulfillment_from_plan(message: str, plan: Dict) -> Dict:
         used_from_stock = avail
         deficit = req - avail
 
+    # Suppliers are pre-sorted by stock footprint for this material.
+    top_suppliers = [
+        {"name": s["name"],
+         "variant_count": s.get("product_count", 0),
+         "stock_quantity": s.get("stock_quantity", 0)}
+        for s in res.get("suppliers", [])[:5]
+    ]
+
     if deficit <= 0:
+        evidence = {
+            "action": "order_fulfillment",
+            "material": material,
+            "requested": req,
+            "available": avail,
+            "used_from_existing_stock": used_from_stock,
+            "deficit": 0,
+            "top_suppliers": top_suppliers,
+        }
+        if LLM_ENABLED:
+            prompt = (
+                f"The user wants to buy {req:g} units of {material} and is "
+                f"asking which supplier to order from. IMPORTANT: we already "
+                f"hold {avail:g} units of {material} across our network, which "
+                f"fully covers the {req:g}-unit request. State this clearly "
+                f"first — no procurement is strictly needed. Then, if the user "
+                f"still wants to place an external order, recommend ONE "
+                f"supplier from the top_suppliers list (the first entry is our "
+                f"strongest existing partner for this material by stock "
+                f"footprint). DO NOT justify the purchase by citing "
+                f"out-of-stock sub-variants — the user asked about the "
+                f"material family as a whole, and the overall stock is healthy."
+            )
+            text = chat_with_agnes(prompt, context=evidence)
+            if text:
+                return {"type": "text", "message": text, "data": evidence}
+
+        # Deterministic fallback
+        best = top_suppliers[0] if top_suppliers else None
+        sup_line = (
+            f"\n\nIf you still want to place an external order, "
+            f"**{best['name']}** is our strongest partner for {material} "
+            f"({best['stock_quantity']:,} units across {best['variant_count']} "
+            f"variant{'s' if best['variant_count'] != 1 else ''})."
+        ) if best else ""
         return {
             "type": "text",
             "message": (
-                f"✅ We can fulfill the full request of **{req:g}** units of "
-                f"**{material}** from on-hand stock "
-                f"(**{avail:g}** units available)."
+                f"✅ We already have **{avail:,g} units** of **{material}** "
+                f"on hand — the **{req:g}**-unit request is fully covered by "
+                f"existing stock, no procurement needed.{sup_line}"
             ),
+            "data": evidence,
         }
 
     # Use quality-enriched substitutes so higher-quality options rank first
