@@ -7,6 +7,5 @@ venv/
 *.egg-info/
 scratch/
 QUICKSTART.md
-curl_examples.sh
 test_llm.py
 test_sub.py
