@@ -180,12 +180,10 @@ Do not invent certifications or specs you cannot ground in the provided data."""
         text = resp.text.strip()
         text = re.sub(r"^```(?:json)?|```$", "", text, flags=re.MULTILINE).strip()
         data = json.loads(text)
-        evidence.append({
-            "source": f"LLM reasoning ({LLM_MODEL})",
+        evidence.insert(0, {
+            "source": "LLM Reasoning",
             "detail": data.get("reasoning", "")[:400],
         })
-        for risk in data.get("risks", [])[:3]:
-            evidence.append({"source": "LLM risk flag", "detail": str(risk)[:200]})
         return {
             "verdict": data.get("verdict", mock_verdict),
             "confidence": float(data.get("confidence", mock_conf)),
